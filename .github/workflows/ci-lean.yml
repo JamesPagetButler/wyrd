@@ -19,10 +19,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: leanprover/lean-action@v1
-        with:
-          lake-package-directory: 'lean'
-          test: false
+
+      - name: Install elan
+        run: |
+          curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Resolve toolchain from lean-toolchain
+        working-directory: lean
+        run: |
+          elan toolchain install "$(cat lean-toolchain)"
+          elan default "$(cat lean-toolchain)"
+
+      - name: Lake update + cache get + build
+        working-directory: lean
+        run: |
+          lake update
+          lake exe cache get || echo "cache miss; will build mathlib from source"
+          lake build
+
       - name: Verify zero sorries / zero user-defined axioms
         working-directory: lean
         run: |
