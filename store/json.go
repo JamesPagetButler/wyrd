@@ -26,9 +26,9 @@ type JSONFile struct {
 
 // jsonGraph is the on-disk envelope.
 type jsonGraph struct {
-	Version    int                `json:"version"`
-	Nodes      []model.Node       `json:"nodes"`
-	Hyperedges []model.Hyperedge  `json:"hyperedges"`
+	Version    int               `json:"version"`
+	Nodes      []model.Node      `json:"nodes"`
+	Hyperedges []model.Hyperedge `json:"hyperedges"`
 }
 
 const currentVersion = 1
@@ -47,7 +47,7 @@ func (j JSONFile) Save(g *model.Graph) error {
 	if err != nil {
 		return fmt.Errorf("wyrd: store: marshal: %w", err)
 	}
-	if err := os.WriteFile(j.Path, data, 0o644); err != nil {
+	if err := os.WriteFile(j.Path, data, 0o600); err != nil {
 		return fmt.Errorf("wyrd: store: write %s: %w", j.Path, err)
 	}
 	return nil

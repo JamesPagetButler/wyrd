@@ -36,17 +36,27 @@ const (
 	TierSedenion
 )
 
+// Canonical lowercase tier names. Used by String / MarshalJSON /
+// UnmarshalJSON. Exported so consumers (CTH, BMA, Contextus) can
+// use the same identifiers when authoring node/edge metadata.
+const (
+	TierNameComplex    = "complex"
+	TierNameQuaternion = "quaternion"
+	TierNameOctonion   = "octonion"
+	TierNameSedenion   = "sedenion"
+)
+
 // String returns the canonical lowercase name of the tier.
 func (t Tier) String() string {
 	switch t {
 	case TierComplex:
-		return "complex"
+		return TierNameComplex
 	case TierQuaternion:
-		return "quaternion"
+		return TierNameQuaternion
 	case TierOctonion:
-		return "octonion"
+		return TierNameOctonion
 	case TierSedenion:
-		return "sedenion"
+		return TierNameSedenion
 	default:
 		return fmt.Sprintf("tier(%d)", int(t))
 	}
@@ -90,13 +100,13 @@ func (t *Tier) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("model: tier: %w", err)
 	}
 	switch s {
-	case "complex":
+	case TierNameComplex:
 		*t = TierComplex
-	case "quaternion":
+	case TierNameQuaternion:
 		*t = TierQuaternion
-	case "octonion":
+	case TierNameOctonion:
 		*t = TierOctonion
-	case "sedenion":
+	case TierNameSedenion:
 		*t = TierSedenion
 	default:
 		return fmt.Errorf("model: unknown tier %q", s)

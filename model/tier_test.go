@@ -10,10 +10,10 @@ func TestTier_String(t *testing.T) {
 		tier Tier
 		want string
 	}{
-		{TierComplex, "complex"},
-		{TierQuaternion, "quaternion"},
-		{TierOctonion, "octonion"},
-		{TierSedenion, "sedenion"},
+		{TierComplex, TierNameComplex},
+		{TierQuaternion, TierNameQuaternion},
+		{TierOctonion, TierNameOctonion},
+		{TierSedenion, TierNameSedenion},
 	}
 	for _, c := range cases {
 		if got := c.tier.String(); got != c.want {
