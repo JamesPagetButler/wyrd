@@ -1,0 +1,25 @@
+name: Feature request
+description: Propose a new capability for Wyrd
+labels: [enhancement]
+body:
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: What downstream consumer (BMA / CTH / Contextus / other) needs this and why
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What the API or capability should look like
+    validations:
+      required: true
+  - type: textarea
+    id: soundness
+    attributes:
+      label: Soundness anchor
+      description: |
+        Which Lean theorem does this capability rely on? If none yet exists,
+        propose the theorem statement (it can land alongside the Go work).

@@ -1,0 +1,34 @@
+name: CI (Lean)
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'lean/**'
+      - '.github/workflows/ci-lean.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'lean/**'
+      - '.github/workflows/ci-lean.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-corpus:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: leanprover/lean-action@v1
+        with:
+          lake-package-directory: 'lean'
+          test: false
+      - name: Verify zero sorries / zero user-defined axioms
+        working-directory: lean
+        run: |
+          if grep -rEn "^\s*sorry\b" Wyrd/; then
+            echo "::error::sorry found in proof body"; exit 1
+          fi
+          if grep -rEn "^axiom " Wyrd/; then
+            echo "::error::user-defined axiom found"; exit 1
+          fi

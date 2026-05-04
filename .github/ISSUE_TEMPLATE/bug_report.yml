@@ -1,0 +1,25 @@
+name: Bug report
+description: Report a defect in Wyrd's Go runtime or Lean corpus
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: Observed behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: Including the Lean theorem you believe was violated, if relevant
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      render: shell
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit

@@ -1,0 +1,22 @@
+# Go build artefacts
+*.test
+*.out
+coverage.out
+/dist/
+/bin/
+
+# Editor / OS
+.DS_Store
+*~
+.vscode/
+.idea/
+
+# Lake build artefacts (Lean)
+lean/.lake/
+lean/build/
+lean/lake-manifest.json
+
+# Local-only
+.envrc
+.direnv/
+.claude/settings.local.json
