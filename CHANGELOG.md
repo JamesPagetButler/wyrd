@@ -25,7 +25,7 @@ All notable changes to Wyrd. Format: [Keep a Changelog](https://keepachangelog.c
 
 ### Changed
 
-- Wyrd-Proofs-Reference-v1.5 promotion items landed in v1.5 candidate:
-  - `Wyrd/HolographicHypergraphQuaternion.lean` (Theorem 2 ℍ case)
-  - `Wyrd/HolographicHypergraphHigherArity.lean` (Theorem 2, n ≥ 3)
-  - T3.2 abstract theorem promotion in `Wyrd/Noise.lean`
+- `doc/archive/Wyrd-Proofs-Reference-v1.5.md` written, supersedes v1.4
+  (closes #7). Captures: HolographicHypergraphQuaternion (Theorem 2 ℍ),
+  HolographicHypergraphHigherArity (Theorem 2 n ≥ 3 ℝ), T3.2 promotion
+  in Noise.lean, and the §23 audit-table closure of T3.2.
