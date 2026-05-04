@@ -28,10 +28,10 @@ func TestCanSynthesize_UpwardBlocked(t *testing.T) {
 	cases := []struct {
 		caller, target model.Tier
 	}{
-		{model.TierComplex, model.TierQuaternion},   // T2.1.a — ℂ ↛ ℍ
-		{model.TierQuaternion, model.TierOctonion},  // T2.1.b — ℍ ↛ 𝕆
-		{model.TierOctonion, model.TierSedenion},    // T2.1.c — 𝕆 ↛ 𝕊
-		{model.TierComplex, model.TierSedenion},     // transitive
+		{model.TierComplex, model.TierQuaternion},  // T2.1.a — ℂ ↛ ℍ
+		{model.TierQuaternion, model.TierOctonion}, // T2.1.b — ℍ ↛ 𝕆
+		{model.TierOctonion, model.TierSedenion},   // T2.1.c — 𝕆 ↛ 𝕊
+		{model.TierComplex, model.TierSedenion},    // transitive
 	}
 	for _, c := range cases {
 		err := CanSynthesize(c.caller, c.target)

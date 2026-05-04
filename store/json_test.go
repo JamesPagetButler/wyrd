@@ -76,5 +76,5 @@ func TestJSONFile_VersionMismatchRejected(t *testing.T) {
 }
 
 func writeFile(path string, data []byte) error {
-	return os.WriteFile(path, data, 0o644)
+	return os.WriteFile(path, data, 0o600)
 }
