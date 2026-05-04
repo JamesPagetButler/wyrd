@@ -33,3 +33,6 @@ import Wyrd.Constitutional
 import Wyrd.HolographicHypergraph
 import Wyrd.HolographicHypergraphQuaternion
 import Wyrd.HolographicHypergraphHigherArity
+
+-- Phase 4 (CTH lift) — NaryMI synergy positivity
+import Wyrd.NaryMI
