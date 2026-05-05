@@ -33,14 +33,16 @@ func IsAdditiveTriangleConsistent(phiIJ, phiJK, phiIK, tolerance float64) bool {
 // satisfies this constraint by `tripleToPairsH_consistent` (Phase 4 v1.5).
 //
 // Returns the squared norm of the residual q_ik - q_ij·q_jk. Zero (within
-// tolerance) means the three rotations are consistent.
+// tolerance) means the three rotations are consistent. NaN if any input
+// is not at TierQuaternion.
 func TriangleMultiplicative(qIJ, qJK, qIK model.Weight) float64 {
-	if qIJ.Tier != model.TierQuaternion ||
-		qJK.Tier != model.TierQuaternion ||
-		qIK.Tier != model.TierQuaternion {
+	prod, err := HamiltonProduct(qIJ, qJK)
+	if err != nil {
 		return math.NaN()
 	}
-	prod := hamiltonProduct(qIJ, qJK)
+	if qIK.Tier != model.TierQuaternion {
+		return math.NaN()
+	}
 	dW := qIK.Components[0] - prod.Components[0]
 	dX := qIK.Components[1] - prod.Components[1]
 	dY := qIK.Components[2] - prod.Components[2]
@@ -58,20 +60,5 @@ func IsMultiplicativeTriangleConsistent(qIJ, qJK, qIK model.Weight, tolerance fl
 	return r <= tolerance
 }
 
-// hamiltonProduct returns the Hamilton product of two quaternion-tier
-// weights. Result is at TierQuaternion regardless of input.
-//
-// (a · b).w =  a.w·b.w − a.x·b.x − a.y·b.y − a.z·b.z
-// (a · b).x =  a.w·b.x + a.x·b.w + a.y·b.z − a.z·b.y
-// (a · b).y =  a.w·b.y − a.x·b.z + a.y·b.w + a.z·b.x
-// (a · b).z =  a.w·b.z + a.x·b.y − a.y·b.x + a.z·b.w
-func hamiltonProduct(a, b model.Weight) model.Weight {
-	aw, ax, ay, az := a.Components[0], a.Components[1], a.Components[2], a.Components[3]
-	bw, bx, by, bz := b.Components[0], b.Components[1], b.Components[2], b.Components[3]
-	return model.NewQuaternionWeight(
-		aw*bw-ax*bx-ay*by-az*bz,
-		aw*bx+ax*bw+ay*bz-az*by,
-		aw*by-ax*bz+ay*bw+az*bx,
-		aw*bz+ax*by-ay*bx+az*bw,
-	)
-}
+// (Hamilton product moved to compute/quaternion.go as the canonical
+// HamiltonProduct entry point. This file consumes it.)
