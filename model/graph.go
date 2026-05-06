@@ -1,6 +1,9 @@
 package model
 
-import "fmt"
+import (
+	"fmt"
+	"sync"
+)
 
 // Graph is an in-memory typed hypergraph. It maintains node and edge
 // dictionaries plus an incidence index (node → edges containing it)
@@ -11,7 +14,22 @@ import "fmt"
 // leaves v's incident set unchanged. The incidence index is rebuilt on
 // every AddHyperedge to make this property structural rather than
 // implementation-fragile.
+//
+// # Concurrency
+//
+// Graph is safe for concurrent use by multiple goroutines. An internal
+// [sync.RWMutex] guards all reads and writes; readers hold an RLock,
+// writers hold a Lock. The mutex is read-heavy biased — typical
+// consumers (BMA observer, CTH ρ_net snapshotter, scout-agent reads)
+// run alongside a single sleep-cycle writer goroutine, and Go's
+// RWMutex prefers readers when no writer is contending.
+//
+// Methods that return slices ([Graph.Nodes], [Graph.Hyperedges],
+// [Graph.IncidentEdges]) return freshly-allocated copies so callers
+// may iterate without holding the lock; this trades allocation for
+// caller simplicity. Snapshot calls in hot paths should be batched.
 type Graph struct {
+	mu        sync.RWMutex
 	nodes     map[NodeID]Node
 	edges     map[HyperedgeID]Hyperedge
 	incidence map[NodeID]map[HyperedgeID]struct{}
@@ -27,10 +45,18 @@ func NewGraph() *Graph {
 }
 
 // NodeCount returns the number of nodes in the graph.
-func (g *Graph) NodeCount() int { return len(g.nodes) }
+func (g *Graph) NodeCount() int {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return len(g.nodes)
+}
 
 // EdgeCount returns the number of hyperedges in the graph.
-func (g *Graph) EdgeCount() int { return len(g.edges) }
+func (g *Graph) EdgeCount() int {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return len(g.edges)
+}
 
 // AddNode inserts a node. Returns an error if the node is malformed
 // or its ID collides with an existing node.
@@ -38,6 +64,8 @@ func (g *Graph) AddNode(n Node) error {
 	if err := n.Validate(); err != nil {
 		return err
 	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	if _, exists := g.nodes[n.ID]; exists {
 		return fmt.Errorf("model: graph: node %s already exists", n.ID)
 	}
@@ -48,6 +76,8 @@ func (g *Graph) AddNode(n Node) error {
 
 // Node returns the node with the given ID and reports whether it exists.
 func (g *Graph) Node(id NodeID) (Node, bool) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
 	n, ok := g.nodes[id]
 	return n, ok
 }
@@ -60,6 +90,8 @@ func (g *Graph) AddHyperedge(e Hyperedge) error {
 	if err := e.Validate(); err != nil {
 		return err
 	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	if _, exists := g.edges[e.ID]; exists {
 		return fmt.Errorf("model: graph: hyperedge %s already exists", e.ID)
 	}
@@ -78,6 +110,8 @@ func (g *Graph) AddHyperedge(e Hyperedge) error {
 // Hyperedge returns the hyperedge with the given ID and reports whether
 // it exists.
 func (g *Graph) Hyperedge(id HyperedgeID) (Hyperedge, bool) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
 	e, ok := g.edges[id]
 	return e, ok
 }
@@ -91,6 +125,8 @@ func (g *Graph) Hyperedge(id HyperedgeID) (Hyperedge, bool) {
 // of a non-incident edge, IncidentEdges(v) returns the same set as
 // before by `hyperedge_preserves_incident_edges` (C-20a).
 func (g *Graph) IncidentEdges(v NodeID) []HyperedgeID {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
 	set, ok := g.incidence[v]
 	if !ok {
 		return nil
@@ -105,6 +141,8 @@ func (g *Graph) IncidentEdges(v NodeID) []HyperedgeID {
 // RemoveHyperedge removes a hyperedge by ID. Returns an error if the
 // edge does not exist.
 func (g *Graph) RemoveHyperedge(id HyperedgeID) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	e, ok := g.edges[id]
 	if !ok {
 		return fmt.Errorf("model: graph: hyperedge %s does not exist", id)
@@ -119,6 +157,8 @@ func (g *Graph) RemoveHyperedge(id HyperedgeID) error {
 // Nodes returns a snapshot slice of every node in the graph in
 // unspecified order.
 func (g *Graph) Nodes() []Node {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
 	out := make([]Node, 0, len(g.nodes))
 	for _, n := range g.nodes {
 		out = append(out, n)
@@ -129,6 +169,8 @@ func (g *Graph) Nodes() []Node {
 // Hyperedges returns a snapshot slice of every hyperedge in the graph
 // in unspecified order.
 func (g *Graph) Hyperedges() []Hyperedge {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
 	out := make([]Hyperedge, 0, len(g.edges))
 	for _, e := range g.edges {
 		out = append(out, e)
