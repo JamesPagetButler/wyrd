@@ -78,11 +78,82 @@ if err := br.Promote(engramID); err != nil {
 ## Hardware backend
 
 BMA Walk-phase will run on QBP-CU emulator hardware (or, post-Walk, on
-real QBP-CU silicon). The arithmetic for `Weight.Components` at
-`TierQuaternion` will eventually dispatch to qbp-emulator's `Gearbox.Mul`
-(QW64 fast path) or QW128 DD path (deferred per
-[qbp-compute-unit#1][qcu-1]). Wyrd's Go layer remains backend-agnostic;
-the dispatch happens in a future `compute/quaternion.go` file.
+real QBP-CU silicon).
+
+The Wyrd-side dispatch surface is now in main as of PR #11
+(2026-05-04):
+
+- `compute.HamiltonProduct(a, b model.Weight) (model.Weight, error)` —
+  Tier-aware dispatch (TierComplex / TierQuaternion inline; TierOctonion
+  / TierSedenion → `ErrTierUnsupported`).
+- `compute.HamiltonProductHighPrec(a, b model.Weight, prec uint)` —
+  arbitrary-precision path. Currently uses `math/big.Float`; the swap
+  to qbp-emulator's `Gearbox.Mul` is a one-line change pending the
+  `emulator/v0.1.0` tag (waiting on lean2rom #7) and `QBP_PAT`
+  cross-repo CI access. Tracked in
+  [Wyrd issue #2](https://github.com/JamesPagetButler/wyrd/issues/2).
+
+The QBP-CU integration interface is specified in
+[qbp-compute-unit/doc/wyrd-integration.md](https://github.com/JamesPagetButler/qbp-compute-unit/blob/main/doc/wyrd-integration.md)
+v0.2 (typed-per-width Gearbox API, tier ⊥ width orthogonality, Lean
+source-of-truth pinned to qbp-compute-unit per option (b)).
+
+## Triangle architecture
+
+BMA sits at the consumer apex of a four-corner graph:
+
+```
+            QBP-CU (computes; emits WDEvent)
+              /      \
+             /        \
+          Wyrd ─── BMA ─── CTH
+       (substrate) (this) (epistemic measure)
+```
+
+- **QBP-CU** computes; emits `WDEvent` per algebraic op (passive in M0,
+  active in M1).
+- **Wyrd** is the typed-hypergraph substrate BMA holds.
+- **CTH** measures epistemic health (`ρ_net`, fidelity, sediment).
+- **BMA** is the consumer; sleep cycle uses Wyrd for state and CTH for
+  self-monitored ρ_net.
+
+### WDEvent → CTH ρ_net loop (Walk-α)
+
+At M1 (Walk-α), BMA gains an active observer that drains
+`cpu.WatchdogChan` and classifies each event into a CTH input type:
+
+```
+QBP-CU op execution
+  └─→ WDEvent {AlgebraID, NormDelta, ZDClass, ZDIndices, …}
+       └─→ BMA observer goroutine
+            └─→ classify:
+                 |NormDelta| > ε   →  FLAG-norm-drift-{nodeID}
+                 ZDClass != NotZD  →  OBS-zd-detected-{i,j,k,l}
+                 successful op     →  (no anchor; pure runtime)
+            └─→ inject anchors into BMA's *Inventory
+                 └─→ CTH compute.NetCompressionDetail
+                      └─→ ρ_net measurement now reflects runtime
+                          algebraic health
+```
+
+Wyrd's role in this loop is purely as the storage substrate: anchors
+land as `model.Hyperedge` instances under a reserved namespace.
+
+### Reserved `bma.runtime.*` namespace
+
+Runtime-generated anchors from the WDEvent observer use the reserved
+`bma.runtime.*` `Node.Type` prefix to keep them clearly separate from
+authored hypergraph types:
+
+| Anchor class | `Node.Type` |
+|---|---|
+| Norm-drift flag | `bma.runtime.flag-norm-drift` |
+| Zero-divisor observation | `bma.runtime.obs-zd-detected` |
+| (additional WDEvent classes) | `bma.runtime.<event-type>` |
+
+A Wyrd-side constant for the `bma.runtime.` prefix is a candidate for
+the next `model/` change so the namespace is enforceable rather than a
+convention.
 
 ## Open questions
 
@@ -91,8 +162,12 @@ the dispatch happens in a future `compute/quaternion.go` file.
   they distinguished only by `Node.Type` (cheap, requires filter
   predicates)? Lean's `Bridge` proves count-preservation across two
   graphs; the multi-graph approach has formal soundness for free.
+  *(BMA implementor handoff 2026-05-05 §3 confirmed in-process Go API
+  pattern; the multi-vs-single-graph choice remains open and is BMA's
+  call.)*
 - Skuld's `cart` enum (theory / engineering / beekeeper / domain-specific
   per `Wyrd.Cart`): how is it surfaced in the Wyrd Go API? Currently
-  not modelled in `compute/`; deferred to a future `compute/cart.go`.
+  not modelled in `compute/`; deferred to a future `compute/cart.go`
+  alongside the M1 `qbp.amode/bsel/psel` CSR work (peer-review-005).
 
 [qcu-1]: https://github.com/JamesPagetButler/qbp-compute-unit/issues/1

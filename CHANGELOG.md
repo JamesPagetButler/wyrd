@@ -29,3 +29,16 @@ All notable changes to Wyrd. Format: [Keep a Changelog](https://keepachangelog.c
   (closes #7). Captures: HolographicHypergraphQuaternion (Theorem 2 ℍ),
   HolographicHypergraphHigherArity (Theorem 2 n ≥ 3 ℝ), T3.2 promotion
   in Noise.lean, and the §23 audit-table closure of T3.2.
+- `lean/Wyrd/NaryMI.lean` adds the CTH-domain lift `nary_mi_bonus_pos`
+  (closes #3). Bonus strictly positive for `n ≥ 3` with bounded inputs.
+- `compute/quaternion.go` adds the canonical `HamiltonProduct` /
+  `HamiltonProductHighPrec` API (closes #11; refs #2). Tier-aware
+  dispatch on the inline `math/big.Float` path; the Gearbox swap is a
+  one-line follow-up pending the upstream `emulator/v0.1.0` tag.
+- Integration docs refreshed for CTH `v0.1.0` (shipped 2026-05-05),
+  BMA triangle/WDEvent loop architecture, and Contextus Spec v1.2
+  alignment (`SignalSource` enum: scout/correlation/synthesis;
+  `EvidencePointer` discipline; physical/conceptual scope nodes).
+- `doc/architecture.md` updated with the four-corner picture
+  (QBP-CU / Wyrd / BMA / CTH) and the Stream A→B migration plan
+  reference (peer-review-005).
