@@ -6,7 +6,11 @@ Principal Investigator: James Paget Butler
 A quaternion-native typed hypergraph database whose runtime contracts are
 formally verified in Lean 4.
 
-> **Status:** Crawl (v0.1.0-alpha). Foundations + first integration anchors land.
+> **Status:** Crawl (v0.1.0-alpha). Lean Phase 1–4 closed; `model` /
+> `compute` / `store` shipped in main; CTH integration tracked at
+> [confluent-trust v0.1.0](https://github.com/JamesPagetButler/confluent-trust/releases/tag/v0.1.0);
+> QBP-CU integration interface specified in
+> [wyrd-integration.md v0.2](https://github.com/JamesPagetButler/qbp-compute-unit/blob/main/doc/wyrd-integration.md).
 
 ## What it is
 
