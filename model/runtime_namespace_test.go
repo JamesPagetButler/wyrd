@@ -24,8 +24,8 @@ func TestIsRuntimeAnchor_NonRuntimeRejected(t *testing.T) {
 		"contextus.signal",
 		"contextus.scope.physical",
 		"wyrd.internal",
-		"bma.runtime",   // exact prefix without trailing "."; not a runtime anchor type
-		"bma.runtimer",  // visually similar but distinct namespace
+		"bma.runtime",  // exact prefix without trailing "."; not a runtime anchor type
+		"bma.runtimer", // visually similar but distinct namespace
 	}
 	for _, c := range cases {
 		if IsRuntimeAnchor(c) {
