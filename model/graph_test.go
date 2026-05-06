@@ -8,7 +8,7 @@ import (
 func mkNode(id NodeID, tier Tier) Node {
 	return Node{
 		ID:      id,
-		Type:    "test",
+		Type:    testIssuer,
 		Tier:    tier,
 		Created: time.Unix(0, 0),
 	}

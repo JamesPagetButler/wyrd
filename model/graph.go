@@ -201,3 +201,56 @@ func (g *Graph) Hyperedges() []Hyperedge {
 	}
 	return out
 }
+
+// AddNodeWithCapability is the capability-gated form of [Graph.AddNode].
+// Returns [CapabilityError] (Unwraps to [ErrCapabilityViolation]) if
+// cap does not authorise writes at n.Tier; otherwise behaves exactly
+// like [Graph.AddNode].
+//
+// Soundness: per `Wyrd.Capability.capability_grants_safe_access`
+// (Phase 1 T2.3), a holder at tier T performing a tier-T' write
+// (T' ≤ T) is safe; the runtime check rejects exactly the
+// `Wyrd.Foundations.no_surjection_*` (T2.1.a/b/c) cases.
+//
+// I1+I3 framing per `@bma` `live-test` seq=22: the capability check
+// at the mutation boundary is the implementation of both the I1
+// observer-vs-mutator separation and the I3 beekeeper-gated
+// interrupt fire point. See `doc/design/capability-enforcement.md`
+// v0.2 §1.
+func (g *Graph) AddNodeWithCapability(n Node, cap WriteCapability) error {
+	if err := cap.AllowsWrite(n.Tier); err != nil {
+		return err
+	}
+	return g.AddNode(n)
+}
+
+// AddHyperedgeWithCapability is the capability-gated form of
+// [Graph.AddHyperedge]. Returns [CapabilityError] if cap does not
+// authorise writes at e.Tier(); otherwise behaves exactly like
+// [Graph.AddHyperedge].
+func (g *Graph) AddHyperedgeWithCapability(e Hyperedge, cap WriteCapability) error {
+	if err := cap.AllowsWrite(e.Tier()); err != nil {
+		return err
+	}
+	return g.AddHyperedge(e)
+}
+
+// RemoveHyperedgeWithCapability is the capability-gated form of
+// [Graph.RemoveHyperedge]. The tier check uses the *current* tier
+// of the edge being removed; if the edge does not exist, the
+// underlying RemoveHyperedge returns its own error and no
+// capability check is performed (no I1/I3 boundary is being
+// crossed by a no-op).
+func (g *Graph) RemoveHyperedgeWithCapability(id HyperedgeID, cap WriteCapability) error {
+	g.mu.RLock()
+	e, ok := g.edges[id]
+	g.mu.RUnlock()
+	if !ok {
+		// Defer to the underlying method's "not found" semantics.
+		return g.RemoveHyperedge(id)
+	}
+	if err := cap.AllowsWrite(e.Tier()); err != nil {
+		return err
+	}
+	return g.RemoveHyperedge(id)
+}
