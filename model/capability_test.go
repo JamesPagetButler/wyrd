@@ -6,8 +6,12 @@ import (
 	"time"
 )
 
+// testIssuer is the Issuer / Type string used by test fixtures across
+// the model package; extracted as a constant to satisfy goconst.
+const testIssuer = "test"
+
 func newWriteCap(tier Tier) WriteCapability {
-	return WriteCapability{HolderTier: tier, GrantedAt: time.Unix(0, 0), Issuer: "test"}
+	return WriteCapability{HolderTier: tier, GrantedAt: time.Unix(0, 0), Issuer: testIssuer}
 }
 
 func newReadCap(tier Tier) ReadCapability {
