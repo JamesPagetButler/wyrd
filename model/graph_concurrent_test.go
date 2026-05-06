@@ -48,12 +48,12 @@ func TestGraph_ConcurrentMixedAccess(t *testing.T) {
 	deadline := time.Now().Add(dur)
 	var wg sync.WaitGroup
 	var (
-		writes      atomic.Int64
-		reads       atomic.Int64
-		incidents   atomic.Int64
-		nodesSnaps  atomic.Int64
-		removeSucc  atomic.Int64
-		writerErrs  atomic.Int64
+		writes     atomic.Int64
+		reads      atomic.Int64
+		incidents  atomic.Int64
+		nodesSnaps atomic.Int64
+		removeSucc atomic.Int64
+		writerErrs atomic.Int64
 	)
 
 	// Writer goroutine: appends new nodes + edges.
