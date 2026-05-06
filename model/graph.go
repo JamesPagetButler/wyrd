@@ -28,6 +28,30 @@ import (
 // [Graph.IncidentEdges]) return freshly-allocated copies so callers
 // may iterate without holding the lock; this trades allocation for
 // caller simplicity. Snapshot calls in hot paths should be batched.
+//
+// # Lock acquisition as I3 enforcement point
+//
+// Acquiring the write lock on Graph is not just a concurrency
+// primitive; it is the implementation of ADR-003 §I3, the
+// algebraic-isolation-aware lock boundary that gates the WDEvent
+// observer OUT for the full duration of any structural action.
+// In governance terms (ADR-003 §I3 / §I4):
+//
+//   - Read methods (RLock) are the I1 observer-read path. The
+//     observer is read-only on BMA state within a tick — reads do
+//     not block structural mutations and they never escalate into
+//     writes within the same call.
+//   - Write methods (Lock) are the I3 fire point. While the write
+//     lock is held, no observer goroutine can be reading state in
+//     parallel (RWMutex semantics); during this window the
+//     beekeeper-gated interrupt path through the mutation boundary
+//     is the only authorised sequence to firmware-tier state.
+//
+// Per @bma on #live-test 2026-05-06 seq=22, "the RWMutex becomes
+// the implementation of the lock boundary, not just a concurrency
+// detail." Future edits to Graph that touch the lock acquisition
+// pattern are governance-relevant per ADR-003 §I4 and require
+// explicit review before they can land.
 type Graph struct {
 	mu        sync.RWMutex
 	nodes     map[NodeID]Node
