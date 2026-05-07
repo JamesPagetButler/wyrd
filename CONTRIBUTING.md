@@ -65,7 +65,20 @@ should use `lean(<file>): <subject>`, e.g.
 
 ## Code style highlights (Go)
 
-- Pure Go in `model/` and `compute/` — stdlib only, no external deps.
+- `model/` is **stdlib-only**. No external deps.
+- `compute/` is stdlib-by-default but **may take well-vetted numerical
+  dependencies** (e.g. `gonum.org/v1/gonum`) when the work in compute/
+  needs them and the Go-stdlib alternative is materially worse.
+  This is a posture shift from the original "stdlib-only everywhere"
+  rule, settled at the 2026-05-06 closeout (Q4): the Hypergraph
+  Laplacian primitive needs eigenvector computation, and a hand-rolled
+  power-method in `compute/` carries more correctness risk than a
+  vetted gonum import. The bar is "well-vetted by the broader Go
+  numerical-computing community" — gonum, scientific/Go subpackages,
+  similar. Casual deps are still discouraged. **`store/` keeps the
+  stdlib-only convention** until a backend explicitly demands
+  otherwise (MuninnDB / SurrealDB will, but those land at Walk-phase
+  with their own §I4 review).
 - Package names lowercase, single word, no underscores. No `utils`,
   `common`, `helpers`.
 - Acronyms uppercase: `ID`, `MI`, `JSON`. So `NodeID`, `HyperedgeID`,
@@ -106,6 +119,38 @@ the Lean theorem(s) it relies on, with the cite in the doc comment:
 PR review will reject Go APIs that claim invariants without a Lean cite,
 unless the PR explicitly states "no Lean anchor — runtime-only, no
 formal claim made."
+
+## Adding a new `bma.runtime.*` runtime-anchor type
+
+Wyrd reserves the `bma.runtime.*` `model.NodeType` prefix for runtime
+anchors authored by BMA's WDEvent observer (per ADR-003 §I2 and
+`@bma-implementor` `qbp-cu-walk` seq=11). The four current types
+(`flag-norm-drift`, `obs-zd-detected`, `obs-runtime-counter`,
+`obs-fault`) are the closed set as of v0.1; **adding a new type is an
+additive change requiring §I4 review** because it widens a
+cross-project interface contract (BMA writes them, CTH reads them, the
+`IsRuntimeAnchor` helper classifies them).
+
+The process — settled at the 2026-05-06 closeout (Q5):
+
+1. **File a Wyrd issue** describing the new type: name, semantics,
+   instance-ID schema, which WDEvent class triggers it, what CTH
+   `cth_id` form (per ADR-003 §I2) it pairs with.
+2. **§I4 review** by `@bma` and `@bma-implementor` on the issue.
+   The new type changes the I-4 contract; both halves of the BMA pair
+   approve before code lands.
+3. **PR** adding:
+   - The new typed constant in `model/runtime_namespace.go`
+   - A test in `model/runtime_namespace_test.go` confirming the
+     constant value and `IsRuntimeAnchor` classification
+   - A line in `CHANGELOG.md` under the next release
+   - A row added to the namespace table in `doc/integration/bma.md`
+4. **PR review** by `@bma-implementor` (consumer) before merge.
+
+Existing types (the four named above) are stable; renaming or
+removing one is a breaking change for the BMA classifier and CTH
+audit trail and would require a separate, named, migration design
+doc.
 
 ## Adding a new theorem
 
