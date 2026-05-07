@@ -8,6 +8,10 @@ import (
 	"time"
 )
 
+// missingID is a sentinel HyperedgeID/NodeID that is never added to test
+// graphs, used to drive missing-edge / unknown-node error paths.
+const missingID = "ghost"
+
 // --- PromoteBatch happy-path + error-cases ---
 
 func setupBatchGraphs(t *testing.T) (*Graph, *Graph) {
@@ -61,7 +65,7 @@ func TestPromoteBatch_AllOrNothing_MissingEdge(t *testing.T) {
 	dstCountBefore := dst.EdgeCount()
 
 	// Include a non-existent edge mid-batch.
-	err := src.PromoteBatch(dst, []HyperedgeID{"e0", "ghost", "e2"})
+	err := src.PromoteBatch(dst, []HyperedgeID{"e0", missingID, "e2"})
 	if !errors.Is(err, ErrBatchEdgeNotFound) {
 		t.Fatalf("expected ErrBatchEdgeNotFound, got %v", err)
 	}
@@ -146,7 +150,7 @@ func TestRemoveBatch_AllOrNothing_MissingEdge(t *testing.T) {
 	_ = g.AddHyperedge(mkEdge("e0", []NodeID{"a", "b"}, TierComplex))
 	pre := g.EdgeCount()
 
-	err := g.RemoveBatch([]HyperedgeID{"e0", "ghost"})
+	err := g.RemoveBatch([]HyperedgeID{"e0", missingID})
 	if !errors.Is(err, ErrBatchEdgeNotFound) {
 		t.Fatalf("expected ErrBatchEdgeNotFound, got %v", err)
 	}

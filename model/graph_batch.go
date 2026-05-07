@@ -156,6 +156,10 @@ func (g *Graph) RemoveBatch(ids []HyperedgeID) error {
 // acquire locks in a globally-consistent order, preventing deadlock
 // with concurrent reverse-direction batches.
 func orderLocks(a, b *Graph) (first, second *Graph) {
+	// #nosec G103 -- pointer-address comparison is the standard Go idiom
+	// for deterministic two-mutex lock ordering (Go memory model permits
+	// this; no aliasing or arithmetic is performed). Without it, two
+	// concurrent reverse-direction PromoteBatch calls deadlock.
 	if uintptr(unsafe.Pointer(a)) < uintptr(unsafe.Pointer(b)) {
 		return a, b
 	}
