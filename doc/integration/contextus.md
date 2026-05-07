@@ -63,15 +63,22 @@ InsightSignals typically live at `TierComplex` (scalar evidence) or
 `TierQuaternion` (when the signal carries a phase or polarisation
 attribute from a QBP-domain source).
 
-> **`EvidencePointer` shape note.** Contextus Spec v1.3 §11.1 defines a
-> richer `EvidencePointer` struct with tier-conditional fields (`Hash`,
-> `SizeBytes`, `LoadedAt`, `AccessHint`, `Note` populated according to
-> the retention tier per §5.4.3). The Wyrd-side view is the opaque
-> `Node.Payload` bytes — Wyrd does not enforce the tier-conditional
-> shape; Contextus's storage layer governs which fields are populated.
-> The minimal `Corpus / Locator / Confidence` form sketched in the §"Sketch"
-> below is the *minimum* that's always present at every tier; richer
-> fields land on top tier-conditionally.
+> **`EvidencePointer` shape — Contextus Spec v1.3 is authoritative.**
+> The canonical `EvidencePointer` Go struct is defined in Contextus
+> Spec v1.3 §11.1; the *actual* per-tier minimum (per Spec v1.3 §5.4.3)
+> is `Locator + LocatorKind` at Skeleton/Distant, growing
+> tier-conditionally to `+ Hash + SizeBytes + LoadedAt + AccessHint`
+> at Peripheral/Near and `+ Note` at Core. Tier policy is enforced by
+> Contextus's retention layer at write time; the Go struct itself is
+> uniform-shape with `omitempty` on the tier-conditional fields.
+>
+> The Wyrd-side view is the opaque `Node.Payload` bytes — Wyrd does
+> not enforce the tier-conditional shape. The §"Sketch" below shows
+> a minimal `{Corpus, Locator, Confidence}` payload purely as
+> illustration; it is **not** the canonical shape and consumers should
+> follow Spec v1.3 §11.1 + §5.4.3 verbatim. The illustrative form
+> is preserved here because it threads cleanly with this doc's
+> three-line example, not because it tracks the spec.
 
 ## Soundness citations Contextus gains
 
@@ -104,13 +111,16 @@ const (
     SourceSynthesis   SignalSource = "synthesis"
 )
 
-// EvidencePointer is the "where, not what" reference attached to a
-// signal. The pointer carries an opaque locator into the corpus the
-// evidence lives in; it never embeds the evidence body.
+// EvidencePointer (illustrative — not the canonical type).
+//
+// Wyrd's view is the opaque Node.Payload bytes; the canonical struct
+// lives in Contextus Spec v1.3 §11.1 and includes tier-conditional
+// Hash / SizeBytes / LoadedAt / AccessHint / Note fields. The form
+// below is sized for this sketch's three-line example only.
 type EvidencePointer struct {
-    Corpus    string `json:"corpus"`     // namespace, e.g. "edna:goa-cube-2026"
-    Locator   string `json:"locator"`    // corpus-specific addressing form
-    Confidence float64 `json:"confidence,omitempty"`
+    Corpus    string  `json:"corpus"`     // illustrative — Spec v1.3 doesn't have this field
+    Locator   string  `json:"locator"`    // canonical (Spec v1.3 §11.1)
+    Confidence float64 `json:"confidence,omitempty"` // illustrative — Spec v1.3 puts confidence on InsightSignal, not pointer
 }
 
 // Add an InsightSignal as a node, with provenance and evidence pointers
