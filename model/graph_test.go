@@ -52,7 +52,7 @@ func TestGraph_HyperedgeRequiresKnownNodes(t *testing.T) {
 	g := NewGraph()
 	_ = g.AddNode(mkNode("a", TierComplex))
 	_ = g.AddNode(mkNode("b", TierComplex))
-	if err := g.AddHyperedge(mkEdge("e1", []NodeID{"a", "ghost"}, TierComplex)); err == nil {
+	if err := g.AddHyperedge(mkEdge("e1", []NodeID{"a", NodeID(missingID)}, TierComplex)); err == nil {
 		t.Error("expected error: edge references unknown node")
 	}
 }
