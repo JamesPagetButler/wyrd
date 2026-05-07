@@ -85,7 +85,9 @@ Self-loops are unchanged: a node ID may appear in `Nodes` more than once; `Heads
 
 ## 4. Soundness anchor — Lean theorem to add
 
-`lean/Wyrd/HypergraphOriented.lean` (new file):
+`lean/Wyrd/HypergraphOriented.lean` (new file). Below is the **theorem statement plus the proof argument**, surfaced here at design time per `@bma`'s `live-test` seq=81 §I4 ask: the proof reasoning belongs on the §I4 review surface, not behind it.
+
+### 4.1 Theorem statement
 
 ```lean
 /-! Phase 2 (extension) — Oriented hyperedge incidence preservation.
@@ -99,21 +101,58 @@ which side of the orientation v would have been on if it were touched.
 theorem oriented_edge_preserves_incident_edges
   (g : Hypergraph) (e : OrientedHyperedge) (v : NodeID) :
     v ∉ e.nodes →
-    IncidentEdges (insertOriented g e) v = IncidentEdges g v := by
-  -- proof reuses the proof of hyperedge_preserves_incident_edges
-  -- with the orientation metadata observed-but-not-touched.
-  sorry  -- placeholder for the actual proof in the schema PR
+    IncidentEdges (insertOriented g e) v = IncidentEdges g v
 ```
 
-The Go-side annotation in `model/hyperedge.go`:
+### 4.2 Supporting lemma — `incident_edges_orientation_blind`
+
+The proof depends on a structural property of `IncidentEdges` that is *also* a load-bearing claim about the v0.2 schema design — it deserves its own named lemma:
+
+```lean
+lemma incident_edges_orientation_blind
+  (g : Hypergraph) (e e' : OrientedHyperedge) (v : NodeID) :
+    e.nodes = e'.nodes →
+    IncidentEdges (insertOriented g e) v = IncidentEdges (insertOriented g e') v
+```
+
+**Plain English:** if two oriented edges agree on their `nodes` field (same all-nodes set in the same order), they yield the same incidence regardless of `heads`, `tails`, or `isSymmetric` differences. This is the formal version of "`IncidentEdges` reads only `Nodes`, not orientation metadata" — the `query/` v0.1 directionality contract from PR #26 §2.1.
+
+### 4.3 Proof argument
+
+The main theorem reduces to C-20a (`hyperedge_preserves_incident_edges`, Phase 2) via a two-step reduction:
+
+1. **Strip orientation.** Construct `e_flat := { e with heads := [], tails := [], isSymmetric := true }`. By `incident_edges_orientation_blind` (since `e.nodes = e_flat.nodes` by construction), the post-insertion `IncidentEdges` value is identical for `e` and `e_flat`:
+   ```
+   IncidentEdges (insertOriented g e) v
+     = IncidentEdges (insertOriented g e_flat) v          -- by orientation_blind
+     = IncidentEdges (insert g (toFlat e_flat)) v          -- by definition
+   ```
+
+2. **Apply C-20a.** The flat edge `toFlat e_flat` has `nodes` field equal to `e.nodes`, so the hypothesis `v ∉ e.nodes` carries through directly:
+   ```
+   IncidentEdges (insert g (toFlat e_flat)) v
+     = IncidentEdges g v                                   -- by C-20a, hypothesis v ∉ e.nodes
+   ```
+
+Combining: `IncidentEdges (insertOriented g e) v = IncidentEdges g v`. ∎
+
+The reduction is mechanical; no new induction is needed because the orientation metadata is observed-but-not-touched by `IncidentEdges` definitionally — the supporting lemma carries the structural insight and the main theorem inherits its proof from the symmetric case.
+
+### 4.4 What lands in the schema PR
+
+`lean/Wyrd/HypergraphOriented.lean` ships with **both** `incident_edges_orientation_blind` and `oriented_edge_preserves_incident_edges` proven (no `sorry`, no user-defined `axiom` — CI's Phase 2 gate enforces this). The `toFlat` helper and the proof of `incident_edges_orientation_blind` are the genuine new work; the main theorem's proof is the two-line reduction above. Total Lean addition is small (estimated ~40 LOC including imports and namespace setup) — the supporting lemma carries most of it.
+
+### 4.5 Go-side annotation
 
 ```go
 // Soundness: per Wyrd.Hypergraph.oriented_edge_preserves_incident_edges
-// (Phase 2 v0.2 extension), adding an oriented edge whose Nodes set
-// excludes v leaves IncidentEdges(v) unchanged regardless of orientation.
-// The flattened-incidence contract from query.API §2.1 is preserved
-// in the v0.2 schema: orientation is observed by oriented-traversal
-// primitives only, never by IncidentEdges itself.
+// (Phase 2 v0.2 extension, proof reduces to C-20a via the orientation-
+// blind incidence lemma — see doc/design/oriented-hyperedge.md §4.3),
+// adding an oriented edge whose Nodes set excludes v leaves
+// IncidentEdges(v) unchanged regardless of orientation. The flattened-
+// incidence contract from query.API §2.1 is preserved in the v0.2
+// schema: orientation is observed by oriented-traversal primitives
+// only, never by IncidentEdges itself.
 ```
 
 ## 5. Paired query primitive
