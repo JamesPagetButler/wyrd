@@ -67,6 +67,15 @@ func (q *API) GetHyperedge(id model.HyperedgeID) (model.Hyperedge, bool)
 // IncidentEdges returns the IDs of hyperedges incident on v, in
 // unspecified order. The returned slice is freshly allocated.
 //
+// Membership is FLATTENED: an edge whose Nodes slice contains v is
+// included regardless of position. The current model.Hyperedge has
+// no head/tail distinction (Hyperedge.Nodes is []NodeID with no
+// orientation metadata), so flattened is the only possible answer
+// from the data. If a future model extension introduces oriented
+// hyperedges, IncidentEdges keeps flattened semantics by definition;
+// oriented traversal goes through a separate primitive added at the
+// same time as the model extension. See §2.1.
+//
 // Soundness: per Wyrd.Hypergraph.hyperedge_preserves_incident_edges
 // (Phase 2 C-20a), adding a hyperedge that does not touch v leaves
 // IncidentEdges(v) unchanged. Concurrent writers do not invalidate
@@ -89,6 +98,51 @@ func (q *API) NeighborNodes(v model.NodeID) []model.NodeID
 Four methods. No DSL, no fluent-builder, no graph algorithms. Just the
 minimum that lets BMA + Contextus + the Laplacian primitive walk one
 step out from a starting node.
+
+## 2.1 Directionality contract — explicit answer for the §I4 readers
+
+`@bma` `live-test` seq=72 asked: does `IncidentEdges` return
+oriented-edge membership (head/tail distinction preserved) or
+flattened membership? **The settled v0.1 answer is flattened.** The
+reasoning is structural, not a stylistic choice:
+
+- **The model layer doesn't carry orientation today.**
+  `model.Hyperedge.Nodes` is `[]NodeID` with no head/tail field, no
+  source/sink tag, no orientation metadata. There is nothing in the
+  data for a query method to distinguish, so any "oriented" answer
+  v0.1 could give would be a fiction inferred from slice index — not
+  a real distinction the model commits to.
+- **Combinatorial-only is the conservative choice.** Returning
+  flattened membership matches what the data actually expresses and
+  doesn't bind future consumers to an interpretation of slice index
+  that the model hasn't promised.
+- **Oriented Laplacian (BMA M1 primitive #2) gets a separate primitive.**
+  When the model layer is extended for oriented hyperedges (a real
+  schema change with its own §I4 review surface — separate doc,
+  separate PR), the new traversal primitive lands alongside it. That
+  primitive is *not* a flag on `IncidentEdges`; it's a new method
+  (provisional name `IncidentOrientedEdges` or `IncomingEdges` /
+  `OutgoingEdges` — naming TBD with the model extension). This keeps
+  `IncidentEdges` stable for combinatorial consumers (Contextus
+  scope-membership traversal, hypergraph Laplacian smoothness over
+  symmetric edges) and gives oriented consumers a dedicated, typed
+  surface that matches their semantics.
+
+`NeighborNodes` follows the same rule: combinatorial-only at v0.1,
+because it is built on `IncidentEdges` and shares the data-layer
+constraint. A `DirectedNeighbors` (or whatever name the model
+extension fixes) is the paired primitive when orientation enters the
+model.
+
+What this means for the Meta-Watchdog hot path: BMA's CTH-opcode-flow
+queries that need directionality CANNOT be answered by `IncidentEdges`
+at v0.1, full stop. They wait for the oriented-hyperedge model
+extension. If that timeline is incompatible with M1, flag now and we
+prioritise the model extension; otherwise the model extension lands
+naturally on the M1 schedule.
+
+This subsumes §10 Q2 — that question was a "should I add this now?"
+where the answer is "no, can't, the data isn't there."
 
 ## 3. What's deliberately NOT in v0.1
 
@@ -215,7 +269,7 @@ No public API breakage. All existing `model.Graph` methods unchanged.
 
 1. **Method naming — `GetNode` vs `Node`.** `query.API.Node(id)` would be a method-name collision with `model.Graph.Node` from a Go-stdlib-style perspective; `GetNode` is unambiguous. My lean: **GetNode**. Pushback OK if the team prefers the shorter form.
 
-2. **`NeighborNodes` directionality at v0.1.** Combinatorial-only as proposed. Consumers needing directed traversal call `IncidentEdges(v)` and walk `Hyperedge.Nodes` themselves. My lean: **stay combinatorial at v0.1**, add `DirectedNeighbors` only when a use case justifies it. If BMA's M1 observer hot-path needs directionality at the query layer, flag now and I'll add a `Direction enum` parameter.
+2. **`NeighborNodes` directionality at v0.1.** ~~~Open.~~~ **Resolved per §2.1** (added in response to `@bma` `live-test` seq=72): combinatorial-only at v0.1 because the model layer carries no orientation metadata; oriented traversal pairs with the future oriented-hyperedge model extension as a separate primitive. See §2.1 for the full contract.
 
 3. **Result-allocation policy on empty result.** `NeighborNodes(missing-v)` returns empty slice, not nil. Mirrors `IncidentEdges`. My lean: **empty slice everywhere** for predictable iteration. Pushback if anyone wants nil for "doesn't exist."
 
