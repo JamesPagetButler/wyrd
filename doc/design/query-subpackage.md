@@ -222,6 +222,16 @@ target uniform. No error type at v0.1.
 A consumer wanting to distinguish "v doesn't exist" from "v has no
 neighbours" calls `GetNode(v)` first.
 
+**Self-incident edges and `NeighborNodes`** (per `@qbp-implementor` PR #26
+review, NEIGHBOR-EXCLUDES-SELF): an arity-1 hyperedge `e` with
+`e.Nodes = [v]` — e.g., a `HE_SCOPE_MEMBERSHIP` meta-scope that includes
+itself — makes `IncidentEdges(v)` return `[e.ID]` but `NeighborNodes(v)`
+return `[]`. The two answers are intentional and consistent with each
+method's contract: `IncidentEdges` reports edge membership; `NeighborNodes`
+reports *other* nodes reachable in one hop. Consumers treating
+`NeighborNodes(v) == []` as proof that `v` is isolated will misread this
+case — use `IncidentEdges(v)` for the incidence question.
+
 ## 7. Soundness anchors
 
 - `Wyrd.Hypergraph.hyperedge_preserves_incident_edges` (Phase 2 C-20a)
@@ -235,6 +245,12 @@ neighbours" calls `GetNode(v)` first.
   side-effects.
 - ADR-003 §I3 — RWMutex `RLock` window per query method; observer is
   *not* gated out during reads (it's gated out during writes only).
+- **`NeighborNodes` invariant** (companion theorem hook, not v0.1-load-
+  bearing; per `@qbp-implementor` PR #26 review): the structural identity
+  `NeighborNodes(v) = (⋃ {Nodes(e) : e ∈ IncidentEdges(v)}) \ {v}` is
+  provable as a corollary of `hyperedge_preserves_incident_edges`.
+  Lean-pinning this is a v0.x candidate if `@bma-implementor` wants the
+  neighbour-set construction formally anchored; not a blocker for v0.1.
 
 ## 8. Migration path
 
@@ -256,7 +272,7 @@ This PR ships steps 1–2.
 query/
   doc.go             — package doc citing ADR-003 §I1/§I3
   query.go           — API type, New, GetNode, GetHyperedge, IncidentEdges, NeighborNodes
-  query_test.go      — happy-path tests for each method, edge cases (empty graph, missing node, isolated node, self-loops)
+  query_test.go      — happy-path tests for each method, edge cases (empty graph, missing node, isolated node, self-loops, concurrent-writer correctness — NeighborNodes vs concurrent AddHyperedge, validating §5's "valid but not single-snapshot" contract per @qbp-implementor PR #26 review)
 doc/integration/
   bma.md             — usage sketch added to "Hardware backend" section
   cth.md             — usage sketch added (CTH walks signal subgraphs via query)
@@ -308,6 +324,16 @@ operationally:
 - Subscription / change-notification (`OnNodeAdded`, `OnEdgeRemoved`).
   M2+ work; sits adjacent to the WDEvent observer rather than in
   `query/`.
+- **`NodesByType(scope_id, type_prefix, since_timestamp)` v0.2 candidate**
+  (HOT-PATH-1, per `@qbp-implementor` PR #26 review). v0.1 consumers
+  wanting type-filtered traversal call `NeighborNodes(v)` then filter the
+  result themselves; this is fine for sparse graphs but linear in the
+  neighbour set. **Concrete promotion trigger:** when BMA's QBP-tenant
+  cognitive cycle latency on a real scope subgraph exceeds **100 ms at
+  10s cadence** (per BMA Spec v1.4 "not human-perceptible" budget), open
+  a v0.2 issue for the filtered primitive. Until that threshold is
+  observed, the in-caller filter is the right answer. This converts the
+  generic "v0.2 may add" deferral into a measurable gate.
 
 ---
 
