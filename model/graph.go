@@ -57,6 +57,11 @@ type Graph struct {
 	nodes     map[NodeID]Node
 	edges     map[HyperedgeID]Hyperedge
 	incidence map[NodeID]map[HyperedgeID]struct{}
+	// tierCaps holds per-tier eviction caps (0 = disabled / infinite).
+	// Per Contextus Spec v1.3 §5.4 (cap-per-tier retention). Eviction
+	// execution is deferred to a separate primitive (W-Toddle-2); this
+	// field is the policy contract only.
+	tierCaps map[Tier]int
 }
 
 // NewGraph returns an empty Graph.
@@ -65,7 +70,36 @@ func NewGraph() *Graph {
 		nodes:     make(map[NodeID]Node),
 		edges:     make(map[HyperedgeID]Hyperedge),
 		incidence: make(map[NodeID]map[HyperedgeID]struct{}),
+		tierCaps:  make(map[Tier]int),
 	}
+}
+
+// SetTierEvictionCap sets the maximum number of nodes that may be held
+// at the given tier before automatic eviction triggers. cap == 0
+// disables eviction at that tier (effectively infinite).
+//
+// Per Contextus Spec v1.3 §5.4 (cap-per-tier retention). Eviction
+// execution (walking the saturated tier and dropping nodes) is
+// deferred to a separate primitive (W-Toddle-2); this method is the
+// policy contract only.
+//
+// Eviction order under saturation: nodes with TierImmune=true are
+// excluded; among the remainder, ascending Salience is evicted first.
+func (g *Graph) SetTierEvictionCap(t Tier, cap int) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if cap < 0 {
+		cap = 0
+	}
+	g.tierCaps[t] = cap
+}
+
+// TierEvictionCap returns the eviction cap currently set for the given
+// tier. Returns 0 if no cap is set (eviction disabled at that tier).
+func (g *Graph) TierEvictionCap(t Tier) int {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.tierCaps[t]
 }
 
 // NodeCount returns the number of nodes in the graph.
