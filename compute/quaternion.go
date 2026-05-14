@@ -1,8 +1,9 @@
 package compute
 
 import (
-	"math/big"
+	"fmt"
 
+	"github.com/JamesPagetButler/qbp-compute-unit/emulator"
 	"github.com/JamesPagetButler/wyrd/model"
 )
 
@@ -36,7 +37,15 @@ func HamiltonProduct(a, b model.Weight) (model.Weight, error) {
 	}
 	switch a.Tier {
 	case model.TierQuaternion:
-		return hamiltonProductQ64(a, b), nil
+		// Backend: qbp-compute-unit/emulator/v0.1.0-rc1 Gearbox.QMul64
+		// (per doc/wyrd-integration.md §6a.1 + qbp-cu-walk seq=41/42).
+		// The Gearbox is stateless from caller view; algebraic-contract
+		// invariance preserved (Wyrd.Foundations / Wyrd.Capability).
+		g := emulator.NewGearbox()
+		ain := [4]float64{a.Components[0], a.Components[1], a.Components[2], a.Components[3]}
+		bin := [4]float64{b.Components[0], b.Components[1], b.Components[2], b.Components[3]}
+		out := g.QMul64(ain, bin)
+		return model.NewQuaternionWeight(out[0], out[1], out[2], out[3]), nil
 	case model.TierComplex:
 		return complexProduct(a, b), nil
 	case model.TierOctonion, model.TierSedenion:
@@ -66,71 +75,51 @@ func HamiltonProductHighPrec(a, b model.Weight, prec uint) (model.Weight, error)
 	if a.Tier != model.TierQuaternion || b.Tier != model.TierQuaternion {
 		return model.Weight{}, errTierUnsupported(a.Tier)
 	}
-	aw := bigFromF64(a.Components[0], prec)
-	ax := bigFromF64(a.Components[1], prec)
-	ay := bigFromF64(a.Components[2], prec)
-	az := bigFromF64(a.Components[3], prec)
-	bw := bigFromF64(b.Components[0], prec)
-	bx := bigFromF64(b.Components[1], prec)
-	by := bigFromF64(b.Components[2], prec)
-	bz := bigFromF64(b.Components[3], prec)
+	// Backend: qbp-compute-unit/emulator/v0.1.0-rc1 (per
+	// doc/wyrd-integration.md §6a.1 + qbp-cu-walk seq=42).
+	//
+	// The emulator's QMulHighPrec accepts only the slow-path widths
+	// (W256/W512/W1024); for prec at or below QW64 precision (53-bit
+	// mantissa), it directs callers to QMul64. We honour that by
+	// dispatching to QMul64 directly for fast-path requests.
+	g := emulator.NewGearbox()
+	ain := [4]float64{a.Components[0], a.Components[1], a.Components[2], a.Components[3]}
+	bin := [4]float64{b.Components[0], b.Components[1], b.Components[2], b.Components[3]}
 
-	// (a · b).w = aw·bw − ax·bx − ay·by − az·bz
-	rw := mulBig(aw, bw, prec)
-	rw.Sub(rw, mulBig(ax, bx, prec))
-	rw.Sub(rw, mulBig(ay, by, prec))
-	rw.Sub(rw, mulBig(az, bz, prec))
+	if prec <= 53 {
+		// Fast path; equivalent to HamiltonProduct's QW64.
+		out := g.QMul64(ain, bin)
+		return model.NewQuaternionWeight(out[0], out[1], out[2], out[3]), nil
+	}
 
-	// (a · b).x = aw·bx + ax·bw + ay·bz − az·by
-	rx := mulBig(aw, bx, prec)
-	rx.Add(rx, mulBig(ax, bw, prec))
-	rx.Add(rx, mulBig(ay, bz, prec))
-	rx.Sub(rx, mulBig(az, by, prec))
-
-	// (a · b).y = aw·by − ax·bz + ay·bw + az·bx
-	ry := mulBig(aw, by, prec)
-	ry.Sub(ry, mulBig(ax, bz, prec))
-	ry.Add(ry, mulBig(ay, bw, prec))
-	ry.Add(ry, mulBig(az, bx, prec))
-
-	// (a · b).z = aw·bz + ax·by − ay·bx + az·bw
-	rz := mulBig(aw, bz, prec)
-	rz.Add(rz, mulBig(ax, by, prec))
-	rz.Sub(rz, mulBig(ay, bx, prec))
-	rz.Add(rz, mulBig(az, bw, prec))
-
-	rwF, _ := rw.Float64()
-	rxF, _ := rx.Float64()
-	ryF, _ := ry.Float64()
-	rzF, _ := rz.Float64()
-	return model.NewQuaternionWeight(rwF, rxF, ryF, rzF), nil
-}
-
-// hamiltonProductQ64 is the QW64-precision Hamilton product. Same
-// formula as `qbp-emulator/qmath_scalar.go::qmul64Scalar`.
-func hamiltonProductQ64(a, b model.Weight) model.Weight {
-	aw, ax, ay, az := a.Components[0], a.Components[1], a.Components[2], a.Components[3]
-	bw, bx, by, bz := b.Components[0], b.Components[1], b.Components[2], b.Components[3]
-	return model.NewQuaternionWeight(
-		aw*bw-ax*bx-ay*by-az*bz,
-		aw*bx+ax*bw+ay*bz-az*by,
-		aw*by-ax*bz+ay*bw+az*bx,
-		aw*bz+ax*by-ay*bx+az*bw,
-	)
+	// Slow path: map mantissa-bit prec to emulator.Width per the
+	// existing convention in this function's godoc.
+	var w emulator.Width
+	switch {
+	case prec <= 237:
+		w = emulator.W256
+	case prec <= 489:
+		w = emulator.W512
+	default:
+		w = emulator.W1024
+	}
+	out, err := g.QMulHighPrec(w, ain, bin)
+	if err != nil {
+		return model.Weight{}, fmt.Errorf("compute: HamiltonProductHighPrec: %w", err)
+	}
+	return model.NewQuaternionWeight(out[0], out[1], out[2], out[3]), nil
 }
 
 // complexProduct returns the ℂ algebra product (a + bi)(c + di) =
 // (ac − bd) + (ad + bc)i.
+//
+// Note: complex multiplication stays in-tree at v0.1; the §6a.1
+// contract per doc/wyrd-integration.md scopes the Gearbox migration
+// to Hamilton-product call sites only. ℂ is the inner-projection
+// case and runs at native float64 with no precision-tier dispatch
+// needed.
 func complexProduct(a, b model.Weight) model.Weight {
 	ar, ai := a.Components[0], a.Components[1]
 	br, bi := b.Components[0], b.Components[1]
 	return model.NewComplexWeight(ar*br-ai*bi, ar*bi+ai*br)
-}
-
-func bigFromF64(x float64, prec uint) *big.Float {
-	return new(big.Float).SetPrec(prec).SetFloat64(x)
-}
-
-func mulBig(a, b *big.Float, prec uint) *big.Float {
-	return new(big.Float).SetPrec(prec).Mul(a, b)
 }
