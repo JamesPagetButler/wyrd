@@ -42,12 +42,12 @@ type scopeConfigYAML struct {
 }
 
 type physicalScopeYAML struct {
-	ID          string            `json:"id" yaml:"id"`
-	Description string            `json:"description" yaml:"description"`
-	Bounds      map[string][]any  `json:"bounds" yaml:"bounds"`
-	TypeNodes   []string          `json:"type_nodes" yaml:"type_nodes"`
-	TierImmune  bool              `json:"tier_immune,omitempty" yaml:"tier_immune,omitempty"`
-	Salience    float64           `json:"salience,omitempty" yaml:"salience,omitempty"`
+	ID          string           `json:"id" yaml:"id"`
+	Description string           `json:"description" yaml:"description"`
+	Bounds      map[string][]any `json:"bounds" yaml:"bounds"`
+	TypeNodes   []string         `json:"type_nodes" yaml:"type_nodes"`
+	TierImmune  bool             `json:"tier_immune,omitempty" yaml:"tier_immune,omitempty"`
+	Salience    float64          `json:"salience,omitempty" yaml:"salience,omitempty"`
 }
 
 type conceptualScopeYAML struct {
@@ -89,11 +89,15 @@ const (
 // Returns ErrScopeConfigInvalid / ErrScopeLoadConflict / ErrScopeConfigParse
 // per PR #40 §6; consumers unwrap with errors.Is.
 func LoadScopeConfig(graph *model.Graph, configPath string) error {
+	// #nosec G304 -- configPath is the loader's documented input;
+	// callers are trusted (BMA reins wrapper, scope-config bootstrap
+	// scripts). File-inclusion-via-variable is the entire point of
+	// this function.
 	f, err := os.Open(configPath)
 	if err != nil {
 		return fmt.Errorf("store: open %q: %w", configPath, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	ext := strings.ToLower(filepath.Ext(configPath))
 	return LoadScopeConfigReader(graph, f, ext)

@@ -14,10 +14,12 @@ env:
   # rotation) is the chosen path for cross-repo CI access; see the
   # WYRD_PAT secret setup below.
   GOPRIVATE: github.com/JamesPagetButler/*
-  # GOPROXY=direct routes module fetches via git directly (using the
-  # WYRD_PAT credential helper set up below) rather than via
-  # proxy.golang.org, which has no access to private repos.
-  GOPROXY: direct
+  # GOPROXY is the chained form: try the public proxy first (works for
+  # gonum + other public deps), fall back to `direct` for private
+  # modules. GOPRIVATE above tells go to skip the proxy entirely for
+  # private modules, so private fetches always go direct + use the
+  # WYRD_PAT credential helper.
+  GOPROXY: https://proxy.golang.org,direct
 
 jobs:
   build-and-test:
