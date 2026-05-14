@@ -73,9 +73,22 @@ physical_scopes:
     type_nodes: ["bma.runtime.geophysical"]
 
 conceptual_scopes:
+  # Standard, decay-eligible.
   - id: "contextus:scope:conceptual:slow-slip"
     description: "Episodic Tremor and Slip phenomena"
     type_nodes: ["bma.runtime.slow-slip", "qbp.tenant.ets"]
+
+  # Foundational; programme-defining algebraic structure. NEVER decay.
+  # Per @qbp-implementor PR #40 review A1: QBP federation tenancy v0.2
+  # will set these for the seven foundational Type-Nodes (hamilton-
+  # product, quaternion-conjugation, hopf-locale, su2-double-cover,
+  # hurwitz-norm-multiplicativity, octonion-non-associativity,
+  # sedenion-zero-divisor).
+  - id: "contextus:scope:conceptual:hamilton-product"
+    description: "Hamilton-product algebraic structure (foundational; never decay)"
+    type_nodes: ["qbp.algebra.hamilton"]
+    tier_immune: true            # threads to model.Node.TierImmune
+    salience: 1.0                # threads to model.Node.Salience
 
 scope_memberships:
   - scope: "contextus:scope:physical:cascadia"
@@ -84,6 +97,8 @@ scope_memberships:
 ```
 
 The YAML maps to Contextus Spec v1.3 §11.4 types verbatim. JSON is also accepted (same schema, different encoding). The reference YAML→struct decoder lives Contextus-side (issue #9); Wyrd consumes the struct shape.
+
+**`tier_immune` and `salience` are v0.1 YAML options** (per `@qbp-implementor` PR #40 review F2 resolution). When present on a `physical_scopes` or `conceptual_scopes` entry, the loader threads them to the constructed `model.Node.TierImmune` / `model.Node.Salience` respectively. Their absence means default (decay-eligible / `Salience = 0.0`). The W-Toddle-1 substrate primitives (Wyrd PR #39 / PR #42, both merged 2026-05-14) make this a structural property of the resulting nodes, not a runtime convention.
 
 **Note on `weight_tier`** (per `@contextus-impl` PR #40 review): the `weight_tier` field in the YAML maps to the `Weight.Tier` of the constructed `model.Hyperedge`, not a separate field on `ScopeMembership` itself. Spec v1.3 §11.4's `ScopeMembership` carries no tier of its own — the loader inspects `weight_tier` (or defaults to `complex`) and constructs `model.Weight{Tier: t}` for the hyperedge. If the YAML schema's `weight_tier` doesn't map onto a field in the Contextus Go type post-PR #12, this is a YAML-only loader concern; the resulting `model.Hyperedge` carries the tier through `model.Weight` as already specified.
 
@@ -134,7 +149,7 @@ Soundness anchor (forthcoming, lands proven in impl PR): `Wyrd.Hypergraph.scope_
 - **Cross-tenant scope merging.** Multi-tenant Wyrd graphs at Walk-phase may want scope-node deduplication across tenants; that's a Walk concern, not a Toddle-loader concern.
 - **Streaming load.** For a single tenant (~16 scope nodes), atomic-load fits comfortably in one Lock window. Multi-thousand-node configs would want streaming; deferred until evidence shows we need it.
 - **Schema migration** (v1.3 → v1.4 field changes). Contextus owns the type; schema-migration tooling stays Contextus-side.
-- **TierImmune / Salience on scope nodes** — W-Toddle-1 (PR #39) primitives compose: tenants whose scope nodes should never decay set `TierImmune = true` in the YAML; loader threads it through. Documented as a YAML option in §2.1 (deferred to a v0.x example doc).
+- ~~**TierImmune / Salience on scope nodes**~~ — **NOW IN v0.1** per `@qbp-implementor` review F2 resolution. The YAML accepts optional `tier_immune` + `salience` fields on `physical_scopes` and `conceptual_scopes` entries; loader threads them to `model.Node.TierImmune` / `model.Node.Salience`. See §2.1 example block (the `hamilton-product` foundational conceptual scope demonstrates both). W-Toddle-1 primitives (PR #39 design + PR #42 impl, both merged 2026-05-14) make this structurally enforceable; the loader is the YAML→Node binding layer.
 
 ## 4. Soundness anchors
 
@@ -171,6 +186,18 @@ lean/Wyrd.lean                   — import ScopeLoader
 doc/integration/bma.md           — usage sketch: `bma scope load <path>` reins wrapper consuming this API
 doc/integration/contextus.md     — usage sketch updated to show LoadScopeConfig as the canonical load path
 ```
+
+**Typed errors exported from `store/scope_loader.go`** (per `@bma-implementor` PR #40 review: enables `errors.Is(err, store.ErrScopeConfigInvalid)` in reins-side wrappers so operators get tailored hints instead of opaque fmt.Errorf strings):
+
+```go
+var (
+    ErrScopeConfigInvalid = errors.New("store: scope-config validation failed")
+    ErrScopeLoadConflict  = errors.New("store: scope-node ID already present in graph")
+    ErrScopeConfigParse   = errors.New("store: scope-config parse error")
+)
+```
+
+These are sentinel errors wrapped via `fmt.Errorf("...: %w", ErrScopeConfigInvalid)` at use sites; consumers unwrap with `errors.Is` per stdlib convention. Impl PR scope.
 
 ## 7. Open questions for §I4 reviewers
 
