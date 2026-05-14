@@ -40,9 +40,16 @@ The three "look different" framings collapse onto two orthogonal primitives:
 
 Plus one graph-level primitive (not per-node):
 
-- **`Graph.SetTierEvictionCap(t Tier, cap int)`** — Contextus's cap-per-tier eviction (Spec v1.3 §5.4) maps onto this. BMA's sleep-cycle compaction can also use it.
+- **`Graph.SetRetentionCap(rt RetentionTier, cap int)`** — Contextus's cap-per-retention-tier eviction (Spec v1.3 §5.4 + §9.1) maps onto this. BMA's sleep-cycle compaction can also use it.
 
-Together: BMA NT_SEED uses TierImmune. BMA hot nodes use Salience. Contextus NT_INSIGHT_SIGNAL uses both (high salience while in retention window; cap-per-tier eviction governs the window itself; Spec v1.3 §5.4 retention policy maps directly).
+**Tier-axis disambiguation** (per `@contextus-impl` PR #39 review, option (a)): there are **two orthogonal tier axes** in the federation, and they must not collide in API:
+
+- **`model.Tier`** (`Wyrd/model/tier.go`) is the **Cayley-Dickson algebraic privilege tower** — `TierComplex` / `TierQuaternion` / `TierOctonion` / `TierSedenion` (ℂ ⊂ ℍ ⊂ 𝕆 ⊂ 𝕊). Used by every algebra-aware operation in Wyrd. NEVER touched by retention semantics.
+- **`model.RetentionTier`** (new type, this issue) is the **Contextus Spec v1.3 §9.1 retention tier** — `Skeleton` / `Distant` / `Peripheral` / `Near` / `Core`. Used only by `Graph.SetRetentionCap` and the future eviction primitive. NEVER touched by algebraic operations.
+
+The retention API surfaces a `RetentionTier` parameter so that `SetRetentionCap(Peripheral, 5)` reads unambiguously. Calling `SetRetentionCap(TierComplex, 5)` is a type error, not a runtime confusion.
+
+Together: BMA NT_SEED uses TierImmune. BMA hot nodes use Salience. Contextus NT_INSIGHT_SIGNAL uses both (high salience while in retention window; cap-per-retention-tier eviction governs the window itself; Spec v1.3 §5.4 retention policy maps directly).
 
 ## 2. Decision: additive fields on `model.Node`
 
@@ -77,19 +84,40 @@ type Node struct {
 }
 ```
 
-Plus on `Graph`:
+Plus the new `RetentionTier` type and graph-level policy methods:
 
 ```go
-// SetTierEvictionCap sets the maximum number of nodes that may be held
-// at the given tier before eviction triggers. cap == 0 disables eviction
-// at that tier (effectively infinite). Per Contextus Spec v1.3 §5.4.
-//
-// Eviction order under saturation: TierImmune nodes excluded; among the
-// remainder, ascending Salience.
-func (g *Graph) SetTierEvictionCap(t Tier, cap int)
+// model/retention.go (new file)
 
-// TierEvictionCap returns the cap currently set for the tier (0 if unset).
-func (g *Graph) TierEvictionCap(t Tier) int
+// RetentionTier is the Contextus Spec v1.3 §9.1 retention-tier axis.
+// Distinct from model.Tier (the Cayley-Dickson algebraic privilege
+// tower). Eviction caps are set per-retention-tier; algebraic-tier
+// is irrelevant to retention policy.
+type RetentionTier uint8
+
+const (
+    RetentionSkeleton   RetentionTier = iota // outermost; smallest cap (default 1 per Spec v1.3 §5.4)
+    RetentionDistant                          // (default 5)
+    RetentionPeripheral                       // (default 5)
+    RetentionNear                             // (default 20)
+    RetentionCore                             // innermost; largest cap (default 50)
+)
+
+// String returns the Spec v1.3 §9.1 name.
+func (rt RetentionTier) String() string
+
+// SetRetentionCap sets the maximum number of nodes that may be held
+// at the given retention tier before eviction triggers. cap == 0
+// disables eviction at that tier (effectively infinite).
+// Per Contextus Spec v1.3 §5.4 + §9.1.
+//
+// Eviction order under saturation: TierImmune nodes excluded; among
+// the remainder, ascending Salience.
+func (g *Graph) SetRetentionCap(rt RetentionTier, cap int)
+
+// RetentionCap returns the cap currently set for the retention tier
+// (0 if unset).
+func (g *Graph) RetentionCap(rt RetentionTier) int
 ```
 
 The actual eviction implementation is deferred to W-Toddle-2 (or a separate v0.2 issue) — this issue defines only the data + policy contract. Sleep-cycle integration is bma-implementor's surface.
@@ -102,7 +130,9 @@ The actual eviction implementation is deferred to W-Toddle-2 (or a separate v0.2
 
 **Why not a per-node `EvictionPolicy` function pointer?** Closure-based policies don't serialize. Eviction must survive `Save → Load` round-trips. Scalar fields are the only shape that round-trips cleanly.
 
-**Why per-tier caps on `Graph`, not on `Node`?** Per Spec v1.3 §5.4, the cap is a *graph-level* retention policy — every node at tier T is subject to the same cap, regardless of its Type. Putting the cap on `Node` would multiply the policy surface by N nodes; on `Graph` it's O(|Tier|) state.
+**Why per-retention-tier caps on `Graph`, not on `Node`?** Per Spec v1.3 §5.4, the cap is a *graph-level* retention policy — every node at retention-tier rt is subject to the same cap, regardless of its Type. Putting the cap on `Node` would multiply the policy surface by N nodes; on `Graph` it's O(|RetentionTier|) state — i.e., five integers.
+
+**Why `RetentionTier` as a separate type, not strings or untyped ints?** Per `@contextus-impl` PR #39 review: the axis-collision risk between `model.Tier` (algebraic) and Contextus retention tiers is real — calling `SetRetentionCap("complex", 5)` (string) or `SetRetentionCap(0, 5)` (int) would silently pass type checks while meaning the wrong thing. A typed `RetentionTier` makes the axis explicit and machine-checked. The five Spec v1.3 §9.1 enum values are stable; this is iota-friendly without further worry.
 
 ## 4. Soundness anchor
 
