@@ -36,3 +36,6 @@ import Wyrd.HolographicHypergraphHigherArity
 
 -- Phase 4 (CTH lift) — NaryMI synergy positivity
 import Wyrd.NaryMI
+
+-- Phase 2 (extension) — W-Toddle-1 tier-immunity soundness anchor
+import Wyrd.TierImmunity
