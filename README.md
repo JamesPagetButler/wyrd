@@ -38,13 +38,17 @@ Wyrd has two halves:
    bridge promotion, triangle-consistency). Each Go API that has a
    formal soundness claim cites the Lean theorem in its doc comment.
 
+Wyrd is self-sufficient: the storage layer, engram subsystem, and
+hardware supervisor are all native and Lean-verified across phases.
+No third-party database is required at any phase.
+
 ## Phases
 
 | Phase | Storage | Capabilities |
 |---|---|---|
 | Crawl (v0.1.x) | JSON files | Core types, all algebraic-privilege checks, bridge promotion, consistency, CLI |
-| Walk  (v0.2.x) | MuninnDB engrams + NATS events | Hebbian co-activation, Ebbinghaus decay, branch-locked vaults, QBP-CU emulator-accelerated quaternion arithmetic |
-| Run   (v0.3.x) | + SurrealDB | Skuld supervisor enforcing privilege at the hardware boundary; HAMA Tier-N memory |
+| Walk  (v0.2.x) | Wyrd native DB + MuninnDB engrams + NATS events | Hebbian co-activation, Ebbinghaus decay, branch-locked vaults, QBP-CU emulator-accelerated quaternion arithmetic |
+| Run   (v0.3.x) | Wyrd native DB + Skuld supervisor + HAMA Tier-N | Skuld supervisor enforcing privilege at the hardware boundary; HAMA Tier-N memory |
 
 ## Quick start
 
