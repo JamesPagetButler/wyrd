@@ -115,32 +115,63 @@ func TestNode_JSON_v02_NonDefaultsPersisted(t *testing.T) {
 	}
 }
 
-// --- Graph.SetTierEvictionCap / TierEvictionCap ---
+// --- Graph.SetRetentionCap / RetentionCap (per @contextus-impl PR #39 review, option (a)) ---
 
-func TestGraph_TierEvictionCap_DefaultZero(t *testing.T) {
+func TestGraph_RetentionCap_DefaultZero(t *testing.T) {
 	g := NewGraph()
-	if cap := g.TierEvictionCap(TierComplex); cap != 0 {
+	if cap := g.RetentionCap(RetentionPeripheral); cap != 0 {
 		t.Errorf("default cap should be 0 (disabled), got %d", cap)
 	}
 }
 
-func TestGraph_SetTierEvictionCap_HappyPath(t *testing.T) {
+func TestGraph_SetRetentionCap_HappyPath(t *testing.T) {
 	g := NewGraph()
-	g.SetTierEvictionCap(TierComplex, 1000)
-	if cap := g.TierEvictionCap(TierComplex); cap != 1000 {
-		t.Errorf("got cap %d, want 1000", cap)
+	g.SetRetentionCap(RetentionPeripheral, 5)
+	if cap := g.RetentionCap(RetentionPeripheral); cap != 5 {
+		t.Errorf("got cap %d, want 5", cap)
 	}
-	// Per-tier isolation: setting one tier doesn't affect another.
-	if cap := g.TierEvictionCap(TierQuaternion); cap != 0 {
-		t.Errorf("other tier should still be 0, got %d", cap)
+	// Per-retention-tier isolation: setting one doesn't affect another.
+	if cap := g.RetentionCap(RetentionNear); cap != 0 {
+		t.Errorf("other retention tier should still be 0, got %d", cap)
 	}
 }
 
-func TestGraph_SetTierEvictionCap_NegativeNormalisedToZero(t *testing.T) {
+func TestGraph_SetRetentionCap_NegativeNormalisedToZero(t *testing.T) {
 	g := NewGraph()
-	g.SetTierEvictionCap(TierComplex, -5)
-	if cap := g.TierEvictionCap(TierComplex); cap != 0 {
+	g.SetRetentionCap(RetentionPeripheral, -5)
+	if cap := g.RetentionCap(RetentionPeripheral); cap != 0 {
 		t.Errorf("negative cap should normalise to 0 (disabled), got %d", cap)
+	}
+}
+
+// TestRetentionTier_String verifies the Spec v1.3 §9.1 name mapping.
+func TestRetentionTier_String(t *testing.T) {
+	cases := []struct {
+		rt   RetentionTier
+		want string
+	}{
+		{RetentionSkeleton, "skeleton"},
+		{RetentionDistant, "distant"},
+		{RetentionPeripheral, "peripheral"},
+		{RetentionNear, "near"},
+		{RetentionCore, "core"},
+		{RetentionTier(99), "unknown-retention-tier"},
+	}
+	for _, tc := range cases {
+		if got := tc.rt.String(); got != tc.want {
+			t.Errorf("%v.String() = %q, want %q", tc.rt, got, tc.want)
+		}
+	}
+}
+
+func TestRetentionTier_IsValid(t *testing.T) {
+	for rt := RetentionSkeleton; rt <= RetentionCore; rt++ {
+		if !rt.IsValid() {
+			t.Errorf("%v should be valid", rt)
+		}
+	}
+	if RetentionTier(99).IsValid() {
+		t.Error("99 should not be valid")
 	}
 }
 

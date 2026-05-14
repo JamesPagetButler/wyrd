@@ -57,49 +57,61 @@ type Graph struct {
 	nodes     map[NodeID]Node
 	edges     map[HyperedgeID]Hyperedge
 	incidence map[NodeID]map[HyperedgeID]struct{}
-	// tierCaps holds per-tier eviction caps (0 = disabled / infinite).
-	// Per Contextus Spec v1.3 §5.4 (cap-per-tier retention). Eviction
-	// execution is deferred to a separate primitive (W-Toddle-2); this
-	// field is the policy contract only.
-	tierCaps map[Tier]int
+	// retentionCaps holds per-RetentionTier eviction caps (0 = disabled
+	// / infinite). Per Contextus Spec v1.3 §5.4 + §9.1 (cap-per-tier
+	// retention). Eviction execution is deferred to a separate primitive
+	// (W-Toddle-2); this field is the policy contract only.
+	//
+	// Per @contextus-impl PR #39 review: the retention axis (Skeleton /
+	// Distant / Peripheral / Near / Core) is intentionally separate from
+	// model.Tier (algebraic Cayley-Dickson tower); see retention.go.
+	retentionCaps map[RetentionTier]int
 }
 
 // NewGraph returns an empty Graph.
 func NewGraph() *Graph {
 	return &Graph{
-		nodes:     make(map[NodeID]Node),
-		edges:     make(map[HyperedgeID]Hyperedge),
-		incidence: make(map[NodeID]map[HyperedgeID]struct{}),
-		tierCaps:  make(map[Tier]int),
+		nodes:         make(map[NodeID]Node),
+		edges:         make(map[HyperedgeID]Hyperedge),
+		incidence:     make(map[NodeID]map[HyperedgeID]struct{}),
+		retentionCaps: make(map[RetentionTier]int),
 	}
 }
 
-// SetTierEvictionCap sets the maximum number of nodes that may be held
-// at the given tier before automatic eviction triggers. cap == 0
-// disables eviction at that tier (effectively infinite).
+// SetRetentionCap sets the maximum number of nodes that may be held at
+// the given retention tier before automatic eviction triggers.
+// cap == 0 disables eviction at that retention tier (effectively
+// infinite).
 //
-// Per Contextus Spec v1.3 §5.4 (cap-per-tier retention). Eviction
-// execution (walking the saturated tier and dropping nodes) is
-// deferred to a separate primitive (W-Toddle-2); this method is the
-// policy contract only.
+// Per Contextus Spec v1.3 §5.4 + §9.1 (cap-per-retention-tier).
+// Eviction execution (walking the saturated tier and dropping nodes)
+// is deferred to a separate primitive (W-Toddle-2); this method is
+// the policy contract only.
+//
+// Note the type: [RetentionTier], NOT [Tier]. The two axes are
+// orthogonal — [Tier] is algebraic privilege (ℂ ⊂ ℍ ⊂ 𝕆 ⊂ 𝕊);
+// [RetentionTier] is Spec v1.3 §9.1 retention (Skeleton / Distant /
+// Peripheral / Near / Core). Per @contextus-impl PR #39 review:
+// keeping these typed separately prevents axis-confusion at call sites.
 //
 // Eviction order under saturation: nodes with TierImmune=true are
 // excluded; among the remainder, ascending Salience is evicted first.
-func (g *Graph) SetTierEvictionCap(t Tier, cap int) {
+func (g *Graph) SetRetentionCap(rt RetentionTier, cap int) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if cap < 0 {
 		cap = 0
 	}
-	g.tierCaps[t] = cap
+	g.retentionCaps[rt] = cap
 }
 
-// TierEvictionCap returns the eviction cap currently set for the given
-// tier. Returns 0 if no cap is set (eviction disabled at that tier).
-func (g *Graph) TierEvictionCap(t Tier) int {
+// RetentionCap returns the eviction cap currently set for the given
+// retention tier. Returns 0 if no cap is set (eviction disabled at
+// that tier).
+func (g *Graph) RetentionCap(rt RetentionTier) int {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
-	return g.tierCaps[t]
+	return g.retentionCaps[rt]
 }
 
 // NodeCount returns the number of nodes in the graph.
