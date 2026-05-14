@@ -25,7 +25,7 @@ func TestNode_Validate_SalienceInRange(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			n := Node{
 				ID:       "n1",
-				Type:     "test",
+				Type:     testIssuer,
 				Tier:     TierComplex,
 				Created:  time.Unix(0, 0),
 				Salience: tc.salience,
@@ -68,7 +68,7 @@ func TestNode_JSON_v01_DeserializesIntoV02(t *testing.T) {
 func TestNode_JSON_v02_DefaultsOmitted(t *testing.T) {
 	n := Node{
 		ID:      "n1",
-		Type:    "test",
+		Type:    testIssuer,
 		Tier:    TierComplex,
 		Created: time.Unix(0, 0).UTC(),
 	}
