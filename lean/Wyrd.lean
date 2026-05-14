@@ -39,3 +39,6 @@ import Wyrd.NaryMI
 
 -- Phase 2 (extension) — W-Toddle-1 tier-immunity soundness anchor
 import Wyrd.TierImmunity
+
+-- Phase 2 (extension) — scope-loader atomicity soundness anchor
+import Wyrd.ScopeLoader
