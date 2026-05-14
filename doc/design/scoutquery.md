@@ -97,10 +97,20 @@ const (
 // ScoutQuery dispatches a Stance × Locale × source × sink × agent-type
 // query. Returns all qualifying intersections in the focal cone.
 //
-// v0.1 placeholder body: returns the trivial intersection set (all
-// agents of the requested types within the Locale Volume, with uniform
-// AbsorptionGain = 0.5). Soundness anchor for the placeholder: see §3.4.
-// Real body lands per the dependency chain in §3.5.
+// v0.1 PLACEHOLDER BEHAVIOUR — DO NOT WRITE STANCE-DEPENDENT CONSUMER
+// CODE YET. v0.1 always returns the trivial intersection set with
+// uniform AbsorptionGain = 0.5 regardless of the Stance carried by the
+// Provenance []NodeID field (NT_SCOPE_CONCEPTUAL refs). Stance-Algorithm
+// dispatch is deferred to v0.2 (§3.6); the precision Width arg is the
+// only API-surface tunable at v0.1, and it does NOT yet drive routing
+// either. Consumers writing "if Stance.includes(X) then expect higher
+// AbsorptionGain" logic against v0.1 will fail silently when v0.2 lands
+// real spectral routing — there's no behaviour to observe at v0.1.
+//
+// Per @bma (Marcy Gen 61) #addendum-18-walk seq=48 §I4 read.
+//
+// Soundness anchor for the placeholder: see §3.4. Real body lands per
+// the dependency chain in §3.5.
 func ScoutQuery(
     g *model.Graph,
     locale Volume,
