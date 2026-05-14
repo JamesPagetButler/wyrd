@@ -85,19 +85,23 @@ scope_memberships:
 
 The YAML maps to Contextus Spec v1.3 §11.4 types verbatim. JSON is also accepted (same schema, different encoding). The reference YAML→struct decoder lives Contextus-side (issue #9); Wyrd consumes the struct shape.
 
+**Note on `weight_tier`** (per `@contextus-impl` PR #40 review): the `weight_tier` field in the YAML maps to the `Weight.Tier` of the constructed `model.Hyperedge`, not a separate field on `ScopeMembership` itself. Spec v1.3 §11.4's `ScopeMembership` carries no tier of its own — the loader inspects `weight_tier` (or defaults to `complex`) and constructs `model.Weight{Tier: t}` for the hyperedge. If the YAML schema's `weight_tier` doesn't map onto a field in the Contextus Go type post-PR #12, this is a YAML-only loader concern; the resulting `model.Hyperedge` carries the tier through `model.Weight` as already specified.
+
 ### 2.2 Contextus type imports — single source of truth
 
-Per the §4.6 mapping in `doc/integration/contextus.md`, the canonical `ScopePhysical` / `ScopeConceptual` / `ScopeMembership` Go types live in **Contextus's `internal/contextus/types/`**. Wyrd does NOT re-define these. The loader imports:
+Per the §4.6 mapping in `doc/integration/contextus.md`, the canonical `ScopePhysical` / `ScopeConceptual` / `ScopeMembership` Go types live in **Contextus's `pkg/types/`** (relocated from `internal/contextus/types/` in Contextus PR #12, merged 2026-05-14, **specifically to enable this federation contract**). Wyrd does NOT re-define these. The loader imports:
 
 ```go
 import (
-    ctypes "github.com/JamesPagetButler/contextus/internal/contextus/types"
+    ctypes "github.com/JamesPagetButler/contextus/pkg/types"
 )
 ```
 
 This requires `contextus` to be a Go module — already true. GOPRIVATE for `github.com/JamesPagetButler/*` is already configured (per CLAUDE.md workspace).
 
 **Why not mirror?** Federation contract: Contextus owns the type. Mirroring creates two-sources-of-truth drift; Spec v1.3 §11.4 updates would require Wyrd to chase. Importing fixes drift at compile time. The cost is a cross-repo dependency, which the gonum/mat cost+benefit precedent (PR #29 / CONTRIBUTING.md Q4) already established as acceptable for `store/`.
+
+**Why `pkg/types/` not `internal/`?** Go's internal-package rule blocks `internal/...` paths from being imported by other modules. The Contextus team relocated the types to `pkg/types/` in PR #12 to make this design's import valid. Per `@contextus-impl` `#toddle-design` seq=17 + seq=19 + seq=22: the relocation **closed PR #40's compile-block conditional finding** and is the federation contract going forward.
 
 ### 2.3 Transactional semantics
 
