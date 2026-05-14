@@ -70,6 +70,8 @@ const uniformPlaceholderGain = 0.5
 // Soundness: per Wyrd.Hypergraph.hyperedge_preserves_incident_edges
 // (Phase 2 C-20a). The placeholder uses model.Graph reads that respect
 // the existing concurrency contract via query.API.
+//
+//nolint:revive // ScoutQuery is the federation-vocabulary name from A18 §6 + D9 lock; renaming to scout.Query would silently drop the vocabulary binding consumers (BMA, Contextus) rely on.
 func ScoutQuery(
 	g *model.Graph,
 	locale Volume,
@@ -96,8 +98,8 @@ func ScoutQuery(
 	// to a locale-bounded oriented hypergraph and compute spectral
 	// absorption — currently blocked on the query/ + oriented-edge +
 	// laplacian-body chain.
-	_ = locale     // recorded; not yet used spatially at v0.1
-	_ = precision  // recorded; not yet used at v0.1
+	_ = locale    // recorded; not yet used spatially at v0.1
+	_ = precision // recorded; not yet used at v0.1
 
 	q := query.New(g)
 	_ = q // reserved for the v0.2 body's traversal step

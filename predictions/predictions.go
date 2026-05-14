@@ -51,16 +51,16 @@ type CTHAnchor struct {
 // (JSON) on a node of Type = NodeTypePrediction. The Node.ID is the
 // SignalID; the Node.Created is the PredictedAt time.
 type Prediction struct {
-	SignalID       model.NodeID    `json:"signal_id"`
-	Referent       Referent        `json:"referent"`
-	PredictedValue any             `json:"predicted_value"`
-	Stance         []model.NodeID  `json:"stance"`
-	Locale         []model.NodeID  `json:"locale"`
-	PredictedAt    time.Time       `json:"predicted_at"`
-	CTHAnchor      *CTHAnchor      `json:"cth_anchor,omitempty"`
-	ObservedValue  any             `json:"observed_value,omitempty"`
-	ObservedAt     *time.Time      `json:"observed_at,omitempty"`
-	Score          *float64        `json:"score,omitempty"`
+	SignalID       model.NodeID   `json:"signal_id"`
+	Referent       Referent       `json:"referent"`
+	PredictedValue any            `json:"predicted_value"`
+	Stance         []model.NodeID `json:"stance"`
+	Locale         []model.NodeID `json:"locale"`
+	PredictedAt    time.Time      `json:"predicted_at"`
+	CTHAnchor      *CTHAnchor     `json:"cth_anchor,omitempty"`
+	ObservedValue  any            `json:"observed_value,omitempty"`
+	ObservedAt     *time.Time     `json:"observed_at,omitempty"`
+	Score          *float64       `json:"score,omitempty"`
 }
 
 // ErrPredictionInvalid is the sentinel returned by Validate when a

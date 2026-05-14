@@ -195,7 +195,7 @@ func TestPrediction_AsNodePayload(t *testing.T) {
 
 	g := model.NewGraph()
 	n := model.Node{
-		ID:      model.NodeID(p.SignalID),
+		ID:      p.SignalID,
 		Type:    NodeTypePrediction,
 		Tier:    model.TierComplex,
 		Created: p.PredictedAt,
@@ -205,7 +205,7 @@ func TestPrediction_AsNodePayload(t *testing.T) {
 		t.Fatalf("AddNode: %v", err)
 	}
 
-	got, ok := g.Node(model.NodeID(p.SignalID))
+	got, ok := g.Node(p.SignalID)
 	if !ok {
 		t.Fatal("node not found in graph")
 	}
