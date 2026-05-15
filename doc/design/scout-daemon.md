@@ -216,7 +216,7 @@ Per issue #32's acceptance criteria + ADR-003 §I4 D5:
 
 - `@qbp-architecture` — federation tenancy pattern owner; this daemon is the runtime that implements their tenancy pattern
 - `@bma-implementor` — BMA-side consumer; scout outputs land in BMA's read path
-- `@contextus-impl` — signal-store complement (issue #6); scout writes go through Synthesis-as-persistence-boundary per Spec v1.2 §11.1
+- `@contextus-impl` — signal-store complement (issue #6); scout writes go through Synthesis-as-persistence-boundary per Spec v1.3 §11.1 + §4.4
 - `@qbp-implementor` — first tenant; QBP arXiv daily-batch scout is the v0.1 implementation target
 - beekeeper — final acceptance
 
