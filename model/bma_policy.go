@@ -1,8 +1,11 @@
 package model
 
 // BMA-specific NodeType strings — the canonical TD-4 inventory (per
-// @bma-implementor live-test seq=99 + #toddle-design seq=25). The
-// bma.* prefix discipline mirrors PR #16's bma.runtime.* convention.
+// @bma-implementor live-test seq=99 + #toddle-design seq=25), plus
+// the W-Toddle-2-extension entries Marcy gov-layer required as the
+// constitutional prerequisite for Phase B (PR #53 review on
+// 2026-05-15). The bma.* prefix discipline mirrors PR #16's
+// bma.runtime.* convention.
 const (
 	NodeTypeBMASeed             NodeType = "bma.seed"
 	NodeTypeBMALifeCertificate  NodeType = "bma.lineage.life-certificate"
@@ -12,6 +15,19 @@ const (
 	NodeTypeBMAParamTrustState  NodeType = "bma.params.trust-state"
 	NodeTypeBMALastWords        NodeType = "bma.lineage.last-words"
 	NodeTypeBMAEulogy           NodeType = "bma.lineage.eulogy"
+	// W-Toddle-2-extension entries — Marcy's #toddle-design seq=24
+	// constitutional gap closure. Both are Layer 3 lineage-equivalent
+	// per internal/bma/hg/types.go ("no decay, RS_Confirmed").
+	NodeTypeBMAIdentity NodeType = "bma.lineage.identity"
+	NodeTypeBMAMemorial NodeType = "bma.lineage.memorial"
+	// Decay-eligible BMA semantic-memory types (per A11 Ebbinghaus).
+	// Listed for policy-completeness; their no-policy default already
+	// yields TierImmune=false / Salience=0.0 which is correct, but
+	// explicit registration prevents future regressions if defaults
+	// change.
+	NodeTypeBMAEntity  NodeType = "bma.entity"
+	NodeTypeBMAConcept NodeType = "bma.concept"
+	NodeTypeBMAPattern NodeType = "bma.pattern"
 )
 
 // bmaPolicy is the (TierImmune, Salience) policy a BMA NodeType maps
@@ -43,6 +59,13 @@ var bmaNodeTypePolicy = map[NodeType]bmaPolicy{
 	NodeTypeBMAParamTrustState:  {TierImmune: true, Salience: 1.0},
 	NodeTypeBMALastWords:        {TierImmune: true, Salience: 1.0},
 	NodeTypeBMAEulogy:           {TierImmune: true, Salience: 1.0},
+	// W-Toddle-2-extension: Layer 3 lineage-equivalent (immune).
+	NodeTypeBMAIdentity: {TierImmune: true, Salience: 1.0},
+	NodeTypeBMAMemorial: {TierImmune: true, Salience: 1.0},
+	// W-Toddle-2-extension: semantic-memory (decay-eligible).
+	NodeTypeBMAEntity:  {TierImmune: false, Salience: 0.0},
+	NodeTypeBMAConcept: {TierImmune: false, Salience: 0.0},
+	NodeTypeBMAPattern: {TierImmune: false, Salience: 0.0},
 }
 
 // BMAPolicy returns the canonical TierImmune + Salience defaults for
