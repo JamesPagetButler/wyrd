@@ -7,6 +7,14 @@ import (
 	"time"
 )
 
+// Shared test constants for oriented-edge tests. Lint (goconst) flags
+// "sink" if it appears as a literal in 5+ places; declaring it here
+// keeps test fixtures DRY across this file.
+const (
+	testNodeSrc  NodeID = "src"
+	testNodeSink NodeID = "sink"
+)
+
 func mkOrientedNode(id NodeID) Node {
 	return Node{ID: id, Type: testIssuer, Tier: TierComplex, Created: time.Unix(0, 0)}
 }
@@ -88,7 +96,7 @@ func TestHyperedge_Validate_DuplicateInHeads(t *testing.T) {
 func TestHyperedge_Validate_OrientedBipartite(t *testing.T) {
 	e := Hyperedge{
 		ID:      "e",
-		Nodes:   []NodeID{"src", "sink"},
+		Nodes:   []NodeID{testNodeSrc, testNodeSink},
 		Weight:  Weight{Tier: TierComplex},
 		Heads:   []int{0},
 		Tails:   []int{1},
@@ -213,12 +221,12 @@ func TestHyperedge_JSON_OrientedRoundTrip(t *testing.T) {
 // path accepts oriented edges end-to-end.
 func TestGraph_AddHyperedge_AcceptsOrientedEdge(t *testing.T) {
 	g := NewGraph()
-	for _, id := range []NodeID{"src", "sink"} {
+	for _, id := range []NodeID{testNodeSrc, testNodeSink} {
 		_ = g.AddNode(mkOrientedNode(id))
 	}
 	e := Hyperedge{
 		ID:      "e",
-		Nodes:   []NodeID{"src", "sink"},
+		Nodes:   []NodeID{testNodeSrc, testNodeSink},
 		Weight:  NewQuaternionWeight(1, 0, 0, 0),
 		Heads:   []int{0},
 		Tails:   []int{1},
