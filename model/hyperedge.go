@@ -29,6 +29,27 @@ type Hyperedge struct {
 	Weight      Weight      `json:"weight"`
 	IsSymmetric bool        `json:"is_symmetric"`
 	Created     time.Time   `json:"created"`
+
+	// Heads and Tails are indices into Nodes encoding orientation. When
+	// IsSymmetric == false, Heads identifies the source-side nodes
+	// and Tails the sink-side nodes; their semantics are tenant-
+	// defined (CTH opcode flow: Heads = upstream, Tails = downstream;
+	// other consumers may interpret differently per their own design).
+	// Indices in Heads ∪ Tails must lie within [0, len(Nodes)); their
+	// intersection must be empty. Nodes not in either set are
+	// "transit" — present in the edge but not directional endpoints
+	// (per PR #31 §3 "N-to-M-with-transit" pattern).
+	//
+	// When IsSymmetric == true, both slices must be empty (validated).
+	// Both fields omitempty for v0.1 wire-format compatibility.
+	//
+	// Soundness: per Wyrd.HypergraphOriented.oriented_edge_preserves
+	// _incident_edges (Phase 2 extension, forthcoming Lean theorem
+	// following PR #31 §4.3 reduction pattern), adding an oriented
+	// edge whose Nodes set excludes v leaves IncidentEdges(v)
+	// unchanged regardless of orientation metadata.
+	Heads []int `json:"heads,omitempty"`
+	Tails []int `json:"tails,omitempty"`
 }
 
 // Arity returns the number of distinct nodes the hyperedge connects.
@@ -60,7 +81,93 @@ func (e Hyperedge) Validate() error {
 	if err := e.Weight.Validate(); err != nil {
 		return fmt.Errorf("model: hyperedge %s: %w", e.ID, err)
 	}
+	// Orientation invariants per PR #31 §3.
+	if e.IsSymmetric && (len(e.Heads) > 0 || len(e.Tails) > 0) {
+		return fmt.Errorf("model: hyperedge %s: symmetric edge must have empty Heads/Tails", e.ID)
+	}
+	n := len(e.Nodes)
+	seen := make(map[int]string, len(e.Heads)+len(e.Tails))
+	for _, idx := range e.Heads {
+		if idx < 0 || idx >= n {
+			return fmt.Errorf("model: hyperedge %s: Heads index %d out of range [0,%d)", e.ID, idx, n)
+		}
+		if prev, ok := seen[idx]; ok {
+			return fmt.Errorf("model: hyperedge %s: index %d in both %s and Heads", e.ID, idx, prev)
+		}
+		seen[idx] = "Heads"
+	}
+	for _, idx := range e.Tails {
+		if idx < 0 || idx >= n {
+			return fmt.Errorf("model: hyperedge %s: Tails index %d out of range [0,%d)", e.ID, idx, n)
+		}
+		if prev, ok := seen[idx]; ok {
+			return fmt.Errorf("model: hyperedge %s: index %d in both %s and Tails", e.ID, idx, prev)
+		}
+		seen[idx] = "Tails"
+	}
 	return nil
+}
+
+// IsOriented reports whether the edge carries non-trivial orientation
+// metadata (at least one Head or Tail index set). An edge can be
+// IsSymmetric=false without being oriented if both Heads and Tails
+// are empty — that's the "v0.1 backward-compatible" case where
+// orientation isn't expressed even though it isn't structurally
+// forbidden either.
+func (e Hyperedge) IsOriented() bool {
+	return len(e.Heads) > 0 || len(e.Tails) > 0
+}
+
+// HeadNodes returns the NodeIDs of the head-side endpoints. Convenience
+// wrapper over the Heads index slice.
+func (e Hyperedge) HeadNodes() []NodeID {
+	if len(e.Heads) == 0 {
+		return nil
+	}
+	out := make([]NodeID, 0, len(e.Heads))
+	for _, idx := range e.Heads {
+		if idx >= 0 && idx < len(e.Nodes) {
+			out = append(out, e.Nodes[idx])
+		}
+	}
+	return out
+}
+
+// TailNodes returns the NodeIDs of the tail-side endpoints.
+func (e Hyperedge) TailNodes() []NodeID {
+	if len(e.Tails) == 0 {
+		return nil
+	}
+	out := make([]NodeID, 0, len(e.Tails))
+	for _, idx := range e.Tails {
+		if idx >= 0 && idx < len(e.Nodes) {
+			out = append(out, e.Nodes[idx])
+		}
+	}
+	return out
+}
+
+// TransitNodes returns the NodeIDs of nodes that are part of the edge
+// but neither head nor tail endpoints. Per PR #31 §3, transit nodes
+// participate as context.
+func (e Hyperedge) TransitNodes() []NodeID {
+	if !e.IsOriented() {
+		return nil
+	}
+	roles := make(map[int]bool, len(e.Heads)+len(e.Tails))
+	for _, i := range e.Heads {
+		roles[i] = true
+	}
+	for _, i := range e.Tails {
+		roles[i] = true
+	}
+	var out []NodeID
+	for i, n := range e.Nodes {
+		if !roles[i] {
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
 // Incident reports whether v is among the edge's nodes.
