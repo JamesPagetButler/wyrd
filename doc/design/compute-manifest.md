@@ -3,7 +3,8 @@
 **Status:** Design **v0.1** — open for review per ADR-003 §I4
 **Tracks:** Spec 9.2 §11 Toddle deliverable ("Compute Manifest v0.1 authored in `repo-wyrd`"). Precursor to `repo-bma-systema-issue-#170` (Translation Functor cycle-counter cross-phase invariant) and `repo-bma-systema-issue-#171` (Spec 9.2 §3 credibility-window amendment).
 **Governance anchor:** ADR-003 §I4; Spec 9.2 §4 (Compute Manifest as Wyrd-owned operational document); Spec 9.2 §11 (Toddle deliverable list); parent `repo-bma-systema-issue-#164` (Federation Lean Promotion Protocol)
-**Authors:** wyrd-implementor
+**Authors:** wyrd-implementor (with federation-architecture coordination per Spec 9.2 §4 authorship)
+**Reviewer feedback folded (v0.1 post-§I4 round 1):** @qbp-architecture APPROVE-WITH-CONCERN, @bma-implementor APPROVE, @qbp-implementor consultative APPROVE — concerns folded inline per the round-1 fix-pass commit; v0.2 follow-ups noted as separate sub-issues in §11.
 
 ---
 
@@ -100,6 +101,16 @@ substrate:
 # These fields are defined in #171's amendment + schema extension and
 # land on this manifest in v0.2. v0.1 omits them; mode-(b) promotion
 # is best-effort during Crawl/Toddle (Spec 9.2 §3.1 amendment text).
+#
+# v0.2 extension placeholder (per @qbp-architecture concern 3 on PR #58):
+# verified_invariants:
+#   - { theorem: "Wyrd.CycleCounterCrossPhase.cycle_counter_monotonic_per_phase", repo: "github.com/JamesPagetButler/wyrd", pr: <#>, modes: ["a", "b"] }
+#   - ...
+#
+# Forward-pinned substrate-tier theorems that hold for this substrate
+# version. First entry lands with repo-bma-systema-issue-#170 (cycle-
+# counter cross-phase invariant); shape may be refined by #170's Lean
+# encoding. Tracked as a v0.2 sub-issue parallel to #171.
 ```
 
 ### 2.3 Go schema and loader
@@ -148,6 +159,13 @@ type Substrate struct {
     Kind       SubstrateKind `yaml:"kind"       json:"kind"`
     Repo       string        `yaml:"repo"       json:"repo"`
     Module     string        `yaml:"module"     json:"module,omitempty"`
+    // Module is REQUIRED when Kind == SubstrateEmulator (a Go module
+    // path is meaningful for emulator substrates exposed as Go
+    // libraries). For SubstrateGearboxCPU, SubstrateGPUAccelerator,
+    // and SubstrateSilicon, Module is optional and typically empty
+    // — silicon/GPU substrates don't expose a Go module. Validation
+    // rule 8 (§2.4) enforces this conditional requirement.
+    // (Per @qbp-architecture PR #58 minor doc clarification.)
     CommitSHA  string        `yaml:"commit_sha" json:"commit_sha"`
     PinnedTag  string        `yaml:"pinned_tag" json:"pinned_tag,omitempty"`
 }
@@ -181,8 +199,23 @@ func LoadComputeManifestReader(r io.Reader) (*ComputeManifest, error)
 3. `phase` is one of the five declared `ComputeManifestPhase` values.
 4. `substrate.name` non-empty.
 5. `substrate.kind` is one of the four declared `SubstrateKind` values.
-6. `substrate.repo` matches `^github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$` (Crawl-phase tightening; v0.2 may relax).
+6. `substrate.repo` matches `^github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$` (Crawl-phase tightening; v0.2 may relax). The regex is exported as a package-level `var SubstrateRepoRegex` so v0.2 host-broadening (Gitea, self-hosted GitLab, sovereign Git server) can swap the constant without a schema bump — per @qbp-architecture concern 2 + @qbp-implementor F3 on PR #58.
 7. `substrate.commit_sha` matches `^[0-9a-f]{40}$` OR equals `"TBD-pinned-at-PR-time"` (the bootstrap sentinel — the federation CI rejects this in any non-bootstrap PR).
+8. **Phase × substrate.kind cross-check (per @qbp-architecture + @bma-implementor + @qbp-implementor PR #58 unanimous concur).** The `(phase, substrate.kind)` pair must be one of the legal Spec 9.2 §4 table combinations:
+
+   | phase | legal substrate.kind |
+   |---|---|
+   | `crawl` | `emulator` |
+   | `toddle` | `emulator` |
+   | `walk` | `gearbox-cpu` |
+   | `run-initial` | `gpu-accelerator` (+ `gearbox-cpu` as legacy peer) |
+   | `run-mature` | `silicon` (+ `gpu-accelerator` + `gearbox-cpu` as legacy peers) |
+
+   The legal-combinations table is exported as a `var LegalPhaseKindPairs map[ComputeManifestPhase][]SubstrateKind` const in `model/compute_manifest.go` alongside the enums (per @qbp-architecture pre-impl recommendation), making both the schema rule + the doc reference grep-able.
+
+9. **Substrate.Module conditional requirement (per @qbp-architecture minor doc clarification).** When `substrate.kind == "emulator"`, `substrate.module` MUST be non-empty (the emulator must expose a Go module path). For all other kinds, `substrate.module` is optional.
+
+**Unknown top-level keys are accepted** (additive forward-compatibility; per @bma-implementor PR #58 non-blocking observation). A v0.2-shaped manifest loaded by a v0.1 reader silently ignores v0.2 fields and operates with v0.1-only semantics. A v0.2 reader loading a v0.1 manifest sees zero-value v0.2 fields and falls back to documented v0.1 semantics. This durably supports schema evolution across version bumps without requiring lockstep reader updates.
 
 Validation failure returns `ErrComputeManifestInvalid` wrapping a specific cause via `fmt.Errorf("...: %w", ErrComputeManifestInvalid)`. Consumers unwrap with `errors.Is` per stdlib convention.
 
@@ -190,13 +223,25 @@ Validation failure returns `ErrComputeManifestInvalid` wrapping a specific cause
 
 The very first PR landing this manifest cannot yet name a real `commit_sha` for the QBP-CU emulator that has been federation-blessed (no prior blessing exists). To avoid a chicken-and-egg deadlock, v0.1 accepts the literal string `"TBD-pinned-at-PR-time"` as the commit_sha *only when CI is running on the manifest-bootstrap PR itself* (detected by branch name match against `manifest/compute-manifest-v0_1`). All subsequent PRs must pin a real SHA. The bootstrap-PR concession is documented in §11 below for traceability.
 
+**v0.2 hardening note (per @bma-implementor PR #58 CONCUR-WITH-NOTE on Q4):** branch-name detection is fragile if the bootstrap PR ever needs rebasing onto a renamed branch (a force-push to `manifest/v0_1-rebase` would silently break sentinel acceptance). The v0.2 hardening adds a `bootstrap-manifest: true` commit-message trailer as the canonical signal; CI checks BOTH branch-name AND trailer for belt-and-suspenders. v0.1 ships branch-name only; trailer is filed as a v0.2 sub-issue (§11).
+
+### 2.5b Pointer ↔ YAML cross-commit atomicity (per @qbp-implementor PR #58 F1)
+
+The `manifest/CURRENT` pointer + the YAML file it names form a two-file pair. Within a single Git commit they update atomically (one tree-write). But filesystem-watch consumers reading the live working tree mid-version-bump can observe a stale-pointer / new-YAML or new-pointer / stale-YAML window for the duration of a `git checkout` of the bump commit.
+
+**v0.1 semantics:** the manifest trusts Git commit boundaries. Consumers reading a checked-out tree at a specific SHA see a consistent (pointer, YAML) pair. Consumers reading a live working tree during a checkout transition must re-read both files transactionally if the read crosses a commit boundary.
+
+**v0.2 concern:** Walk-α may introduce long-running federation-CI runners that outlive a single commit checkout (the BMA `bma compute-manifest current` reins wrapper is the first such consumer). At that point the atomicity guarantee tightens — either via a single-file manifest (drop the pointer) or via an OS-level rename(2)-atomic update of a single pointer→pinned-version target file. Filed as a v0.2 sub-issue (§11).
+
 ## 3. Not in v0.1
 
 - **Credibility-window fields** (`last_passing_tier_a`, `last_passing_tier_b`) — these are `repo-bma-systema-issue-#171`'s deliverable. v0.1 reserves the schema slot via a top-level placeholder comment but does not require the fields. v0.2 lands them.
-- **Multi-substrate phases.** Walk-α may want multi-tenant substrates (one for QBP-CU M1 Gearbox, one for ROCm GPU acceleration on the same workload); v0.1 names a single substrate. Walk concern; not Toddle.
+- **Verified-invariants forward-pinning** (per @qbp-architecture concern 3 on PR #58) — a `verified_invariants: [...]` list of substrate-tier theorems pinned to this manifest version. First entry will come from `repo-bma-systema-issue-#170`'s cycle-counter Lean encoding; shape may be refined by that PR. Filed as a v0.2 sub-issue parallel to #171; reserved as a YAML placeholder comment in §2.2.
+- **Multi-substrate phases.** Walk-α may want multi-tenant substrates (one for QBP-CU M1 Gearbox, one for ROCm GPU acceleration on the same workload); v0.1 names a single substrate. **First concrete motivating case** (per @qbp-implementor PR #58 F2 consultative): QBP federation tenancy v0.2 §2.1 + §2.4 declares 13+ heterogeneous Locales (LIGO + trapped-ion + JWST + NICER + NuSTAR); Sprint 2 single-substrate covers all of these on the emulator, but Walk-α trapped-ion QW8-precision experiments will need multi-substrate (some scouts on emulator, others on Gearbox). Cross-reference QBP tenancy v0.3 housekeeping #434 (Locale frame discipline) when filing the v0.2+ multi-substrate sub-issue.
 - **Substrate-transition automation.** Spec 9.2 §5 says deprecations remain proved; downstream tenant proofs continue to verify. The mechanics of writing a substrate-transition PR (Crawl → Walk) are a Walk-phase concern; v0.1 just gives that PR a single file to amend.
 - **In-tree substrate vs. external substrate.** v0.1 substrates can only be external (referenced by `repo` + `commit_sha`). An in-tree substrate (e.g., a Wyrd-internal mock for testing) is excluded; tests use `LoadComputeManifestReader` with a fixture instead.
 - **Cryptographic attestation of substrate identity.** v0.1 trusts the Git SHA. Signing the manifest with a beekeeper YubiKey is a Walk concern (per `repo-bma-systema-issue-#34` YubiKey-Walk-phase tracking).
+- **Filesystem-watch atomicity for long-running runners.** Per §2.5b above; v0.1 trusts Git commit atomicity, v0.2 hardening covers OS-level atomic-rename or single-file consolidation. Filed as a v0.2 sub-issue (§11).
 
 ## 4. Soundness anchors
 
@@ -213,10 +258,11 @@ The Compute Manifest is Wyrd-owned per Spec 9.2 §4, but several federation peer
 | Manifest YAML + Go schema + loader (this design) | wyrd-implementor | `repo-wyrd/manifest/`, `repo-wyrd/model/compute_manifest.go` |
 | Credibility-window fields (v0.2) | wyrd-implementor (#171) | `last_passing_tier_{a,b}` + CI gate |
 | Substrate publishing Tier A / Tier B verification timestamps | qbp-cu-implementor | `repo-qbp-compute-unit` exposes signed timestamps consumed by #171's amendment |
-| BMA runtime consumption (`bma compute-manifest current`) | bma-implementor | reins wrapper reads this manifest |
+| BMA runtime consumption (`bma compute-manifest current`) | bma-implementor | reins wrapper reads this manifest; @bma-implementor PR #58 commits to stub-now landing as a housekeeping sub-issue post-design-merge |
 | Substrate-transition PR pattern | qbp-architecture | guidance doc when Crawl → Walk transition happens |
+| Federation tenant runtime build-time pinning (per @qbp-implementor PR #58 F4) | qbp-implementor + Sharp Butler + Möbius + Materia | each tenant's Go module pins the substrate Go module at the SHA the manifest names; tenant CI re-runs against the manifest SHA on each manifest version-bump. The manifest publishes the SHA; tenants choose how to pin (Go module pin, git submodule, vendored fork). |
 
-`@bma-implementor` can stub a reins wrapper against the API signature defined here **starting now**; no need to wait for impl PR. Same pattern as scope-loader (§5 of `doc/design/scope-loader.md`).
+`@bma-implementor` can stub a reins wrapper against the API signature defined here **starting now**; no need to wait for impl PR. Same pattern as scope-loader (§5 of `doc/design/scope-loader.md`). Stub-now confirmed in PR #58 §I4 ack (will land as separate housekeeping sub-issue post-merge).
 
 ## 6. What this design PR ships
 
@@ -240,6 +286,24 @@ var (
     ErrComputeManifestMissing = errors.New("model: compute-manifest CURRENT pointer missing")
 )
 ```
+
+### 6.1 Implementation sequence (scope-glob discipline per `repo-inter-pr-#3` §2.2.1)
+
+Per @qbp-architecture pre-impl recommendation on PR #58 (and the scope-glob discipline best-practice being lifted to federation-wide convention in `repo-inter-pr-#3`):
+
+| PR | Scope (file-list, not pattern) | Effort | Depends-on |
+|---|---|---|---|
+| impl-1 | `manifest/compute-manifest-v0_1.yaml` + `manifest/CURRENT` + `model/compute_manifest.go` + `model/compute_manifest_test.go` (incl. unit test for sentinel-acceptance gate per @qbp-architecture pre-impl Q4) | ~0.5 day | this design PR (§I4 acks) |
+| impl-2 | `lean/Wyrd/ComputeManifest.lean` + `lean/lakefile.toml` update + `lean/Wyrd/ComputeManifest_test.lean` if appropriate | ~0.5 day | impl-1 merged |
+| impl-3 | `doc/integration/compute-manifest.md` (BMA reins + federation CI consumer usage sketch) | ~0.25 day | impl-1 merged |
+
+**Scope-glob rule application** (per inter PR #3 §2.2.1 six rules):
+- Rule 1 (file-list, not pattern): each impl PR ships only the files in its row.
+- Rule 2 (tests in scope every PR): impl-1 + impl-2 both ship their own tests.
+- Rule 3 (test files for new packages declared first time): `model/compute_manifest_test.go` declared in impl-1 row.
+- Rule 4 (generated files declared explicitly): none.
+- Rule 5 (docs in scope when behavior-visible): impl-3 ships behavior-visible integration docs separately.
+- Rule 6 (cross-package work splits across PRs): impl-1 (Go) + impl-2 (Lean) split correctly.
 
 ## 7. Open questions for §I4 reviewers
 
@@ -274,7 +338,18 @@ Per the parent issues' reader-list (#170 + #171 both name the same five):
 - **Substrate-transition cadence.** Crawl → Walk timing is a beekeeper-directed phase decision, not a manifest concern. The manifest just names the current substrate; when it's amended, what triggered the amendment is a phase-transition concern.
 - **What happens if the manifest disagrees with reality.** If `manifest/CURRENT` names QBP-CU emulator commit X but the workspace's installed Go module is at commit Y, that's a runtime drift the manifest cannot detect. Detection is a future v0.x concern (probably part of `repo-qbp-compute-unit`'s self-reporting, not this manifest).
 
-## 11. Cross-references
+## 11. v0.2 follow-up sub-issues (to file post-merge)
+
+Per the round-1 §I4 fix-pass, three concerns are deferred to v0.2 as separate housekeeping sub-issues, NOT folded into the impl PR scope:
+
+1. **`substrate.repo` regex broadening** (per @qbp-architecture concern 2 + @qbp-implementor F3) — relax `^github\.com/...` regex when first non-GitHub federation tenant lands. v0.1 ships `SubstrateRepoRegex` as an exported package-level `var` so the swap doesn't bump the schema.
+2. **`verified_invariants` field** (per @qbp-architecture concern 3) — forward-pinned substrate-tier theorem refs that hold for this substrate version. First entry's shape may be refined by `repo-bma-systema-issue-#170`'s Lean encoding. Filed parallel to #171.
+3. **Filesystem-watch atomicity hardening** (per @qbp-implementor F1) — single-file consolidation OR rename(2)-atomic pointer update when Walk-α introduces long-running federation runners.
+4. **Bootstrap-sentinel commit-message trailer** (per @bma-implementor Q4 CONCUR-WITH-NOTE) — `bootstrap-manifest: true` trailer as canonical signal for belt-and-suspenders sentinel acceptance; v0.1 ships branch-name-only.
+
+Each will be filed as `repo-wyrd` housekeeping issues post-merge (label `housekeeping`; three-criteria threshold passes for all four per the standing rule).
+
+## 12. Cross-references
 
 - `repo-bma-systema-issue-#164` — A21.0 Federation Lean Promotion Protocol (parent of #170 + #171)
 - `repo-bma-systema-issue-#170` — Translation Functor §4.2 substrate-tier invariant (downstream consumer of this manifest)
