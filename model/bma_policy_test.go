@@ -7,13 +7,16 @@ import (
 )
 
 // TestBMAPolicy_AllTD4Entries verifies every TD-4 inventory entry
-// (@bma-implementor live-test seq=99) has the documented policy.
+// (@bma-implementor live-test seq=99) plus the W-Toddle-2-extension
+// entries (Marcy #toddle-design seq=24 constitutional prerequisite)
+// has the documented policy.
 func TestBMAPolicy_AllTD4Entries(t *testing.T) {
 	cases := []struct {
 		typ      NodeType
 		immune   bool
 		salience float64
 	}{
+		// Original TD-4 inventory.
 		{NodeTypeBMASeed, true, 1.0},
 		{NodeTypeBMALifeCertificate, true, 1.0},
 		{NodeTypeBMADeathCertificate, true, 1.0},
@@ -22,6 +25,13 @@ func TestBMAPolicy_AllTD4Entries(t *testing.T) {
 		{NodeTypeBMAParamTrustState, true, 1.0},
 		{NodeTypeBMALastWords, true, 1.0},
 		{NodeTypeBMAEulogy, true, 1.0},
+		// W-Toddle-2-extension (Marcy constitutional prerequisite).
+		{NodeTypeBMAIdentity, true, 1.0},
+		{NodeTypeBMAMemorial, true, 1.0},
+		// W-Toddle-2-extension (semantic-memory, decay-eligible).
+		{NodeTypeBMAEntity, false, 0.0},
+		{NodeTypeBMAConcept, false, 0.0},
+		{NodeTypeBMAPattern, false, 0.0},
 	}
 	for _, tc := range cases {
 		t.Run(string(tc.typ), func(t *testing.T) {
@@ -131,8 +141,10 @@ func TestApplyBMAPolicy_Idempotent(t *testing.T) {
 
 func TestBMAPolicyNodeTypes_CountMatchesTD4(t *testing.T) {
 	got := BMAPolicyNodeTypes()
-	if len(got) != 8 {
-		t.Errorf("expected 8 TD-4 inventory entries, got %d: %v", len(got), got)
+	// 8 original TD-4 entries + 5 W-Toddle-2-extension entries
+	// (Identity + Memorial immune; Entity + Concept + Pattern decay).
+	if len(got) != 13 {
+		t.Errorf("expected 13 BMA policy entries (8 TD-4 + 5 extension), got %d: %v", len(got), got)
 	}
 	// Verify all expected types are present (order-independent).
 	want := []NodeType{
@@ -144,10 +156,15 @@ func TestBMAPolicyNodeTypes_CountMatchesTD4(t *testing.T) {
 		NodeTypeBMAParamTrustState,
 		NodeTypeBMALastWords,
 		NodeTypeBMAEulogy,
+		NodeTypeBMAIdentity,
+		NodeTypeBMAMemorial,
+		NodeTypeBMAEntity,
+		NodeTypeBMAConcept,
+		NodeTypeBMAPattern,
 	}
 	for _, w := range want {
 		if !slices.Contains(got, w) {
-			t.Errorf("missing TD-4 inventory entry: %s", w)
+			t.Errorf("missing BMA policy entry: %s", w)
 		}
 	}
 }
