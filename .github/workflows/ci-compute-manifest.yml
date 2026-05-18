@@ -1,0 +1,143 @@
+name: CI (Compute Manifest)
+#
+# Federation CI mode-(b) gate workflow per Spec 9.2 §3.1 amendment
+# (substrate-credibility-window for mode (b) extraction-and-execute
+# promotion). Phase B-PR-8 of repo-bma-systema-issue-#171; final
+# criterion 3 deliverable of #171's closes-when list.
+#
+# Two jobs:
+#   1. validate-manifest — runs on every manifest/** PR; loads via
+#      model.LoadComputeManifest and confirms validation rules 1-9
+#      from doc/design/compute-manifest.md §2.4 pass.
+#   2. mode-b-eligibility — runs ONLY on PRs labeled
+#      `mode-b-promotion`. Calls IsModeBEligible(time.Now(), 72h)
+#      via cmd/mode-b-eligibility-check; fails the PR if the
+#      predicate returns (false, reason); emits a `mode-b-best-
+#      effort` warning annotation if Crawl/Toddle best-effort.
+#
+# The 72h Walk-α window matches BMA's Step 8 continuous-operation
+# gate per Spec 9.2 §3.1 amendment (recovery v0.2; repo-inter PR #6).
+#
+# Mirrors .github/workflows/ci-lean.yml structure (path-triggered,
+# single-runner, no matrix).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'manifest/**'
+      - 'model/compute_manifest.go'
+      - 'cmd/mode-b-eligibility-check/**'
+      - '.github/workflows/ci-compute-manifest.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'manifest/**'
+      - 'model/compute_manifest.go'
+      - 'cmd/mode-b-eligibility-check/**'
+      - '.github/workflows/ci-compute-manifest.yml'
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+env:
+  # Inherit the same federation Go module config as ci-go.yml.
+  GOPRIVATE: github.com/JamesPagetButler/*
+  GOPROXY: https://proxy.golang.org,direct
+
+jobs:
+  # Always-on validation. Loads the canonical manifest pointed to by
+  # manifest/CURRENT and confirms validation rules 1-9 pass. Surfaces
+  # the load+predicate verdict as annotations without gating non-
+  # mode-b PRs. Bootstrap sentinel is permitted only on the canonical
+  # bootstrap branch (TBD-pinned-at-PR-time per design doc §2.5).
+  validate-manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Configure git for private JamesPagetButler/* modules
+        env:
+          WYRD_PAT: ${{ secrets.WYRD_PAT }}
+        run: |
+          if [ -n "$WYRD_PAT" ]; then
+            git config --global url."https://x-access-token:${WYRD_PAT}@github.com/".insteadOf "https://github.com/"
+          fi
+
+      - name: Test mode-b-eligibility-check binary
+        run: go test -race ./cmd/mode-b-eligibility-check/...
+
+      - name: Run mode-b-eligibility-check (surface-only; no gate)
+        run: |
+          # Determine whether this run is on the canonical bootstrap
+          # branch. v0.1 carried the TBD-pinned-at-PR-time sentinel;
+          # v0.2 manifest carries it too until the first real Tier A
+          # blessing exists.
+          ALLOW_BOOTSTRAP=""
+          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          case "$BRANCH" in
+            manifest/compute-manifest-v0_1-impl|manifest/compute-manifest-v0_1|manifest/credibility-window-fields|ci/compute-manifest-mode-b-gate)
+              ALLOW_BOOTSTRAP="--allow-bootstrap-sentinel"
+              echo "::notice::bootstrap-class branch '$BRANCH' detected; allowing TBD-pinned-at-PR-time sentinel"
+              ;;
+          esac
+          # Surface verdict as annotations; do not fail the PR here.
+          # The mode-b-eligibility job below is the actual gate for
+          # mode-b-promotion-labeled PRs.
+          go run ./cmd/mode-b-eligibility-check --root . $ALLOW_BOOTSTRAP || true
+
+  # Conditional gate. Runs ONLY when the PR carries the
+  # `mode-b-promotion` label. Calls IsModeBEligible(time.Now(), 72h)
+  # via the Wyrd-side cmd; fails the PR with the verdict's reason
+  # string if the predicate returns (false, reason).
+  mode-b-eligibility:
+    if: contains(github.event.pull_request.labels.*.name, 'mode-b-promotion')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Configure git for private JamesPagetButler/* modules
+        env:
+          WYRD_PAT: ${{ secrets.WYRD_PAT }}
+        run: |
+          if [ -n "$WYRD_PAT" ]; then
+            git config --global url."https://x-access-token:${WYRD_PAT}@github.com/".insteadOf "https://github.com/"
+          fi
+
+      - name: Check substrate-credibility window
+        id: gate
+        run: |
+          # 72h is the canonical Walk-α window per Spec 9.2 §3.1
+          # amendment (federation-pattern reuse with BMA's 72h Step 8
+          # continuous-operation gate).
+          set +e
+          go run ./cmd/mode-b-eligibility-check --root . --window 72h > /tmp/mode-b-output.txt
+          EXIT_CODE=$?
+          set -e
+          cat /tmp/mode-b-output.txt
+          # Re-export the key=value lines into the GitHub Actions
+          # outputs so subsequent steps can dispatch on them.
+          while IFS='=' read -r key value; do
+            echo "$key=$value" >> "$GITHUB_OUTPUT"
+          done < /tmp/mode-b-output.txt
+          # Exit codes per cmd/mode-b-eligibility-check:
+          #   0 — eligible (ok or best-effort)
+          #   1 — NOT eligible at current phase
+          #   2 — manifest load/validation error (investigate health)
+          exit $EXIT_CODE
+
+      - name: Emit best-effort warning annotation
+        if: steps.gate.outputs.mode_b_warning == 'mode-b-best-effort'
+        run: |
+          echo "::warning title=mode-b-best-effort::Phase ${{ steps.gate.outputs.mode_b_phase }} is best-effort per Spec 9.2 §3.1. Reason: ${{ steps.gate.outputs.mode_b_reason }}"
+
+      - name: Surface promotion-eligibility verdict
+        run: |
+          echo "::notice title=mode-(b) eligibility::eligible=${{ steps.gate.outputs.mode_b_eligible }} phase=${{ steps.gate.outputs.mode_b_phase }} reason=${{ steps.gate.outputs.mode_b_reason }}"
