@@ -42,3 +42,6 @@ import Wyrd.TierImmunity
 
 -- Phase 2 (extension) — scope-loader atomicity soundness anchor
 import Wyrd.ScopeLoader
+
+-- Phase 2 (extension) — Compute Manifest load atomicity soundness anchor
+import Wyrd.ComputeManifest
