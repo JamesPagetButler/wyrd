@@ -1,0 +1,56 @@
+# manifest/compute-manifest-v0_1.yaml
+#
+# The Federation Compute Manifest names the blessed compute substrate
+# per Spec 9.2 §3 (the Compute-Substrate Gate). One file, one truth.
+#
+# Schema + validation rules: doc/design/compute-manifest.md §2.2-§2.4
+# Wyrd-owned per Spec 9.2 §4. Toddle deliverable per Spec 9.2 §11.
+
+version: "v0.1"
+authored_at: "2026-05-17T00:00:00Z"
+
+phase: "crawl"
+# One of: crawl | toddle | walk | run-initial | run-mature.
+# Per Spec 9.2 §4 phase table. Cross-checked against substrate.kind
+# at load time via model.LegalPhaseKindPairs (validation rule 8).
+
+substrate:
+  name: "QBP-CU emulator"
+  kind: "emulator"
+  # One of: emulator | gearbox-cpu | gpu-accelerator | silicon.
+  repo: "github.com/JamesPagetButler/qbp-compute-unit"
+  module: "emulator"
+  # Module REQUIRED when kind == emulator (validation rule 9).
+  commit_sha: "TBD-pinned-at-PR-time"
+  # Bootstrap sentinel per design doc §2.5. No Tier A blessing yet
+  # exists for the QBP-CU emulator; sentinel is accepted only when
+  # federation CI runs with opts.AllowBootstrapSentinel = true on the
+  # manifest-bootstrap PR. v0.2 PRs MUST pin a real 40-char hex SHA.
+  pinned_tag: "v0.1.0-rc1"
+  # Matches Wyrd go.mod pin (qbp-compute-unit/emulator v0.1.0-rc1)
+  # and the upstream git tag (emulator/v0.1.0-rc1) on origin. Per
+  # @qbp-cu-implementor PR #59 Concern 1: pinned_tag tracks the active
+  # substrate identity (pre-release rc1 here), not the eventual
+  # stable target. v0.2 housekeeping (filed parallel to repo-bma-
+  # systema-issue-#171) clarifies git-tag-vs-module-version
+  # semantics; v0.1 ships matching-current-pin per principle of
+  # least surprise.
+
+# v0.2 extension placeholder (per repo-bma-systema-issue-#171):
+# credibility:
+#   last_passing_tier_a: { timestamp: "...", substrate_commit_sha: "..." }
+#   last_passing_tier_b: { timestamp: "...", substrate_commit_sha: "..." }
+#
+# These fields are defined in #171's Spec 9.2 §3.1 amendment + schema
+# extension and land on this manifest in v0.2. v0.1 omits them;
+# mode-(b) promotion is best-effort during Crawl/Toddle per the
+# amendment.
+#
+# v0.2 extension placeholder (per @qbp-architecture concern 3 on PR #58):
+# verified_invariants:
+#   - { theorem: "Wyrd.CycleCounterCrossPhase.cycle_counter_monotonic_per_phase", repo: "github.com/JamesPagetButler/wyrd", pr: <#>, modes: ["a", "b"] }
+#
+# Forward-pinned substrate-tier theorems that hold for this substrate
+# version. First entry lands with repo-bma-systema-issue-#170 (cycle-
+# counter cross-phase invariant); shape may be refined by #170's Lean
+# encoding. Tracked as a v0.2 sub-issue parallel to #171.
