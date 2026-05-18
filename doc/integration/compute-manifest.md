@@ -58,7 +58,7 @@ case errors.Is(err, model.ErrComputeManifestInvalid):
 
 ## BMA-side reins-wrapper sketch
 
-The BMA reins layer wraps `model.LoadComputeManifest` for operator-side inspection. The wrapper lives BMA-side at `internal/bma/cli/compute_manifest.go` (per `repo-bma-systema-issue-#177` scope) and shapes the user-facing command:
+The BMA reins layer wraps `model.LoadComputeManifest` for operator-side inspection. The wrapper lives BMA-side at `cmd/bma/compute_manifest_cmd.go` (per `repo-bma-systema-issue-#177` scope; matches BMA's `cmd/bma/<feature>_cmd.go` reins convention per existing `cmd/bma/cart_cmd.go` + `cmd/bma/scope_cmd.go` + `cmd/bma/graph_cmd.go` precedents) and shapes the user-facing command:
 
 ```bash
 $ bma compute-manifest current
@@ -77,7 +77,7 @@ version:     v0.1
 Behind the scenes:
 
 ```go
-// internal/bma/cli/compute_manifest.go (BMA-side; not Wyrd-side)
+// cmd/bma/compute_manifest_cmd.go (BMA-side; not Wyrd-side)
 import (
     "github.com/JamesPagetButler/wyrd/model"
 )
@@ -142,7 +142,7 @@ When the federation transitions to a new substrate phase (Crawl → Walk, Walk �
 2. Update the pointer: `manifest/CURRENT` from `compute-manifest-v0_1.yaml` to `compute-manifest-v0_2.yaml`
 3. Don't delete the old YAML — keep as historical reference
 
-Both files travel in one commit; consumers tail `manifest/CURRENT` so version bumps don't break the reader (per §2.5b atomicity-via-Git-commit-boundary contract in PR #58 design doc).
+Both files travel in one commit; consumers re-read `manifest/CURRENT` on demand, so version bumps don't break readers in flight (per §2.5b atomicity-via-Git-commit-boundary contract in PR #58 design doc).
 
 ## Soundness citations
 
