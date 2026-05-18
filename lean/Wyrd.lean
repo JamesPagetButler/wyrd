@@ -45,3 +45,7 @@ import Wyrd.ScopeLoader
 
 -- Phase 2 (extension) — Compute Manifest load atomicity soundness anchor
 import Wyrd.ComputeManifest
+
+-- Phase 2 (extension) — Substrate execution trace structure for the
+-- Translation Functor §4.2 substrate-tier invariant (Phase C-PR-11)
+import Wyrd.SubstrateTrace
