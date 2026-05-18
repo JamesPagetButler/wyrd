@@ -1,0 +1,73 @@
+# manifest/compute-manifest-v0_2.yaml
+#
+# The Federation Compute Manifest names the blessed compute substrate
+# per Spec 9.2 §3 (the Compute-Substrate Gate). One file, one truth.
+#
+# Schema + validation rules: doc/design/compute-manifest.md §2.2-§2.4
+# Wyrd-owned per Spec 9.2 §4. Toddle deliverable per Spec 9.2 §11.
+#
+# v0.2 (2026-05-18): adds credibility block per Spec 9.2 §3.1 amendment
+# (substrate-credibility-window for mode (b) extraction-and-execute).
+# Lands as Phase B of repo-bma-systema-issue-#171. v0.1 is retained
+# at manifest/compute-manifest-v0_1.yaml as historical reference.
+
+version: "v0.2"
+authored_at: "2026-05-18T02:55:00Z"
+
+phase: "crawl"
+# One of: crawl | toddle | walk | run-initial | run-mature.
+# Per Spec 9.2 §4 phase table. Cross-checked against substrate.kind
+# at load time via model.LegalPhaseKindPairs (validation rule 8).
+
+substrate:
+  name: "QBP-CU emulator"
+  kind: "emulator"
+  # One of: emulator | gearbox-cpu | gpu-accelerator | silicon.
+  repo: "github.com/JamesPagetButler/qbp-compute-unit"
+  module: "emulator"
+  # Module REQUIRED when kind == emulator (validation rule 9).
+  commit_sha: "TBD-pinned-at-PR-time"
+  # Bootstrap sentinel per design doc §2.5; v0.2 manifest carries the
+  # sentinel until the first real Tier A blessing exists for the
+  # QBP-CU emulator. The credibility block below reflects "no Tier A
+  # blessing yet" — Crawl phase tolerates this as best-effort.
+  pinned_tag: "v0.1.0-rc1"
+  # Matches Wyrd go.mod pin + upstream git tag (emulator/v0.1.0-rc1)
+  # per @qbp-cu-implementor PR #59 Concern 1 fix.
+
+credibility:
+  # Per Spec 9.2 §3.1 amendment (repo-inter PR #6, recovery v0.2).
+  #
+  # During Crawl/Toddle: best-effort. Absent / null fields here are
+  # OK; federation CI emits a `mode-b-best-effort` warning rather
+  # than blocking. The IsModeBEligible(now, window) predicate
+  # (in model/compute_manifest.go) returns (true, "best-effort: ...")
+  # for these cases.
+  #
+  # At Walk-α phase transition: BOTH fields MUST be populated AND
+  # last_passing_tier_a.substrate_commit_sha MUST equal the substrate.
+  # commit_sha above AND last_passing_tier_b.timestamp MUST be within
+  # 24h of the federation CI run for mode (b) promotion to proceed.
+
+  last_passing_tier_a: null
+  # Tier A = PR-gating verification per repo-qbp-compute-unit-pr-#35.
+  # null during Crawl bootstrap (no Tier A has yet executed against
+  # the bootstrap substrate). First populated at qbp-cu-issue-#41
+  # m1.3-era cosim Tier B success per @qbp-cu-implementor PR #59 §6
+  # cross-PR coherence.
+
+  last_passing_tier_b: null
+  # Tier B = nightly verification per repo-qbp-compute-unit-pr-#35.
+  # null during Crawl/Toddle (Tier B cadence is not yet operational).
+  # First populated when QBP-CU Tier B nightly lands as part of
+  # Walk-α phase transition.
+
+# v0.2 extension placeholder (per @qbp-architecture concern 3 on PR #58):
+# verified_invariants:
+#   - { theorem: "Wyrd.CycleCounterCrossPhase.cycle_counter_monotonic_per_phase", repo: "github.com/JamesPagetButler/wyrd", pr: <#>, modes: ["a", "b"] }
+#
+# Forward-pinned substrate-tier theorems that hold for this substrate
+# version. First entry lands with repo-bma-systema-issue-#170 (cycle-
+# counter cross-phase invariant); shape may be refined by #170's Lean
+# encoding. Tracked separately from credibility (this is the v0.3+
+# slot, not a v0.2 deliverable).

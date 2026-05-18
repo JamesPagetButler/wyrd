@@ -461,3 +461,256 @@ func TestLoadComputeManifest_ActualManifestFile_StrictRejectsSentinel(t *testing
 		t.Fatalf("strict load of bootstrap manifest must fail with rule-7; got %v", err)
 	}
 }
+
+// ============================================================
+// v0.2 credibility-window tests (per Spec 9.2 §3.1 amendment;
+// repo-bma-systema-issue-#171 Phase B-PR-7)
+// ============================================================
+
+// realSHA is a valid 40-char hex string for tests that need a real
+// substrate.commit_sha (not the bootstrap sentinel).
+const realSHA = "abc123def456abc123def456abc123def456abcd"
+
+// happyManifestWithCredibility returns a manifest with the bootstrap
+// sentinel replaced by a real SHA and populated credibility fields.
+// Tests mutate copies of this base to exercise the IsModeBEligible
+// truth-table.
+func happyManifestWithCredibility(now time.Time) ComputeManifest {
+	m := happyManifest()
+	m.Version = "v0.2"
+	m.Substrate.CommitSHA = realSHA
+	m.Credibility = &Credibility{
+		LastPassingTierA: &TierVerification{
+			Timestamp:          now.Add(-1 * time.Hour),
+			SubstrateCommitSHA: realSHA,
+		},
+		LastPassingTierB: &TierVerification{
+			Timestamp:          now.Add(-2 * time.Hour),
+			SubstrateCommitSHA: realSHA,
+		},
+	}
+	return m
+}
+
+func TestIsBestEffortPhase(t *testing.T) {
+	cases := []struct {
+		phase ComputeManifestPhase
+		want  bool
+	}{
+		{PhaseCrawl, true},
+		{PhaseToddle, true},
+		{PhaseWalk, false},
+		{PhaseRunInitial, false},
+		{PhaseRunMature, false},
+	}
+	for _, c := range cases {
+		t.Run(string(c.phase), func(t *testing.T) {
+			if got := c.phase.IsBestEffortPhase(); got != c.want {
+				t.Errorf("phase %q: got %v, want %v", c.phase, got, c.want)
+			}
+		})
+	}
+}
+
+func TestIsModeBEligible_BootstrapSentinel_Always_BestEffort(t *testing.T) {
+	// When substrate.commit_sha is the bootstrap sentinel, mode (b)
+	// eligibility is best-effort regardless of phase (no real
+	// substrate to verify yet).
+	for _, phase := range []ComputeManifestPhase{PhaseCrawl, PhaseToddle, PhaseWalk, PhaseRunInitial, PhaseRunMature} {
+		t.Run(string(phase), func(t *testing.T) {
+			m := happyManifest() // uses BootstrapSentinel
+			m.Phase = phase
+			if phase != PhaseCrawl && phase != PhaseToddle {
+				// Rule 8 requires kind change; switch kind to legal for phase
+				for k := range LegalPhaseKindPairs[phase] {
+					m.Substrate.Kind = k
+					if k != SubstrateEmulator {
+						m.Substrate.Module = ""
+					}
+					break
+				}
+			}
+			eligible, reason := m.IsModeBEligible(time.Now(), 24*time.Hour)
+			if !eligible {
+				t.Errorf("bootstrap-sentinel substrate should be best-effort eligible; got (false, %q)", reason)
+			}
+			if !strings.Contains(reason, "bootstrap sentinel") {
+				t.Errorf("expected reason to cite bootstrap sentinel; got %q", reason)
+			}
+		})
+	}
+}
+
+func TestIsModeBEligible_Crawl_BestEffort_AbsentCredibility(t *testing.T) {
+	m := happyManifest()
+	m.Substrate.CommitSHA = realSHA // real SHA but no credibility block
+	eligible, reason := m.IsModeBEligible(time.Now(), 24*time.Hour)
+	if !eligible {
+		t.Fatalf("Crawl + real SHA + nil credibility should be best-effort eligible; got (false, %q)", reason)
+	}
+	if !strings.Contains(reason, "best-effort") {
+		t.Errorf("expected best-effort reason; got %q", reason)
+	}
+}
+
+func TestIsModeBEligible_Crawl_BestEffort_StaleTierB(t *testing.T) {
+	now := time.Now()
+	m := happyManifestWithCredibility(now)
+	// Push Tier B way out of window
+	m.Credibility.LastPassingTierB.Timestamp = now.Add(-48 * time.Hour)
+	eligible, reason := m.IsModeBEligible(now, 24*time.Hour)
+	if !eligible {
+		t.Fatalf("Crawl phase should tolerate stale Tier B as best-effort; got (false, %q)", reason)
+	}
+	if !strings.Contains(reason, "best-effort") {
+		t.Errorf("expected best-effort reason; got %q", reason)
+	}
+}
+
+func TestIsModeBEligible_Walk_Strict_FreshTierB_Pass(t *testing.T) {
+	now := time.Now()
+	m := happyManifestWithCredibility(now)
+	m.Phase = PhaseWalk
+	m.Substrate.Kind = SubstrateGearboxCPU
+	m.Substrate.Module = "" // gearbox-cpu doesn't require module
+	eligible, reason := m.IsModeBEligible(now, 24*time.Hour)
+	if !eligible {
+		t.Fatalf("Walk + fresh Tier B (SHA match, within window) should pass strict; got (false, %q)", reason)
+	}
+	if reason != "ok" {
+		t.Errorf("expected reason 'ok' for strict pass; got %q", reason)
+	}
+}
+
+func TestIsModeBEligible_Walk_Strict_StaleTierB_Block(t *testing.T) {
+	now := time.Now()
+	m := happyManifestWithCredibility(now)
+	m.Phase = PhaseWalk
+	m.Substrate.Kind = SubstrateGearboxCPU
+	m.Substrate.Module = ""
+	// Push Tier B way out of 24h window
+	m.Credibility.LastPassingTierB.Timestamp = now.Add(-48 * time.Hour)
+	eligible, reason := m.IsModeBEligible(now, 24*time.Hour)
+	if eligible {
+		t.Fatalf("Walk + stale Tier B (>24h) should BLOCK; got (true, %q)", reason)
+	}
+	if !strings.Contains(reason, "exceeds window") {
+		t.Errorf("expected reason to cite window exceedance; got %q", reason)
+	}
+}
+
+func TestIsModeBEligible_Walk_Strict_TierASHAMismatch_Block(t *testing.T) {
+	now := time.Now()
+	m := happyManifestWithCredibility(now)
+	m.Phase = PhaseWalk
+	m.Substrate.Kind = SubstrateGearboxCPU
+	m.Substrate.Module = ""
+	// Substrate code changed since last Tier A
+	m.Substrate.CommitSHA = "0000000000000000000000000000000000000000"
+	// (LastPassingTierA still references realSHA)
+	eligible, reason := m.IsModeBEligible(now, 24*time.Hour)
+	if eligible {
+		t.Fatalf("Walk + Tier A SHA mismatch should BLOCK; got (true, %q)", reason)
+	}
+	if !strings.Contains(reason, "Tier A SHA mismatch") {
+		t.Errorf("expected reason to cite Tier A SHA mismatch; got %q", reason)
+	}
+}
+
+func TestIsModeBEligible_Walk_Strict_NilCredibility_Block(t *testing.T) {
+	m := happyManifest()
+	m.Phase = PhaseWalk
+	m.Substrate.Kind = SubstrateGearboxCPU
+	m.Substrate.Module = ""
+	m.Substrate.CommitSHA = realSHA
+	m.Credibility = nil
+	eligible, reason := m.IsModeBEligible(time.Now(), 24*time.Hour)
+	if eligible {
+		t.Fatalf("Walk + nil credibility should BLOCK strict; got (true, %q)", reason)
+	}
+	if !strings.Contains(reason, "strict") {
+		t.Errorf("expected reason to cite strict; got %q", reason)
+	}
+}
+
+func TestIsModeBEligible_Walk_Strict_NilTierA_Block(t *testing.T) {
+	now := time.Now()
+	m := happyManifestWithCredibility(now)
+	m.Phase = PhaseWalk
+	m.Substrate.Kind = SubstrateGearboxCPU
+	m.Substrate.Module = ""
+	m.Credibility.LastPassingTierA = nil
+	eligible, reason := m.IsModeBEligible(now, 24*time.Hour)
+	if eligible {
+		t.Fatalf("Walk + nil Tier A should BLOCK strict; got (true, %q)", reason)
+	}
+	if !strings.Contains(reason, "last_passing_tier_a absent") {
+		t.Errorf("expected reason to cite Tier A absence; got %q", reason)
+	}
+}
+
+func TestIsModeBEligible_Walk_Strict_FutureTimestamp_Block(t *testing.T) {
+	now := time.Now()
+	m := happyManifestWithCredibility(now)
+	m.Phase = PhaseWalk
+	m.Substrate.Kind = SubstrateGearboxCPU
+	m.Substrate.Module = ""
+	// Tier B timestamp in the future (clock skew or paperwork bug)
+	m.Credibility.LastPassingTierB.Timestamp = now.Add(1 * time.Hour)
+	eligible, reason := m.IsModeBEligible(now, 24*time.Hour)
+	if eligible {
+		t.Fatalf("Walk + future Tier B should BLOCK strict; got (true, %q)", reason)
+	}
+	if !strings.Contains(reason, "future") {
+		t.Errorf("expected reason to cite future timestamp; got %q", reason)
+	}
+}
+
+func TestCredibility_RoundTrip_v02(t *testing.T) {
+	// v0.2-shaped manifest with credibility round-trips through YAML.
+	now := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	m := happyManifestWithCredibility(now)
+	raw, err := yaml.Marshal(&m)
+	if err != nil {
+		t.Fatalf("yaml.Marshal v0.2 manifest: %v", err)
+	}
+	got, err := LoadComputeManifestReader(strings.NewReader(string(raw)), LoadOptions{})
+	if err != nil {
+		t.Fatalf("LoadComputeManifestReader on v0.2 round-trip: %v", err)
+	}
+	if got.Credibility == nil {
+		t.Fatal("Credibility block lost in round-trip")
+	}
+	if got.Credibility.LastPassingTierA == nil || got.Credibility.LastPassingTierB == nil {
+		t.Fatal("Tier A/B fields lost in round-trip")
+	}
+	if got.Credibility.LastPassingTierA.SubstrateCommitSHA != realSHA {
+		t.Errorf("Tier A SHA: got %q, want %q", got.Credibility.LastPassingTierA.SubstrateCommitSHA, realSHA)
+	}
+	if !got.Credibility.LastPassingTierA.Timestamp.Equal(m.Credibility.LastPassingTierA.Timestamp) {
+		t.Errorf("Tier A timestamp lost precision: got %v, want %v", got.Credibility.LastPassingTierA.Timestamp, m.Credibility.LastPassingTierA.Timestamp)
+	}
+}
+
+func TestCredibility_v01_ManifestStill_Loads(t *testing.T) {
+	// v0.1-shaped YAML (no credibility block) still loads — Credibility
+	// pointer is nil. Backward-compat preserved.
+	v01YAML := `version: "v0.1"
+authored_at: "2026-05-17T00:00:00Z"
+phase: "crawl"
+substrate:
+  name: "QBP-CU emulator"
+  kind: "emulator"
+  repo: "github.com/JamesPagetButler/qbp-compute-unit"
+  module: "emulator"
+  commit_sha: "TBD-pinned-at-PR-time"
+  pinned_tag: "v0.1.0-rc1"
+`
+	m, err := LoadComputeManifestReader(strings.NewReader(v01YAML), happyOpts())
+	if err != nil {
+		t.Fatalf("v0.1 YAML should still load: %v", err)
+	}
+	if m.Credibility != nil {
+		t.Errorf("v0.1 YAML should produce nil Credibility; got %+v", m.Credibility)
+	}
+}

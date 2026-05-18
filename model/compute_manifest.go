@@ -83,20 +83,51 @@ type Substrate struct {
 	PinnedTag string        `yaml:"pinned_tag,omitempty" json:"pinned_tag,omitempty"`
 }
 
-// ComputeManifest is the v0.1 typed snapshot of the Wyrd-owned
-// Compute Manifest. Credibility-window fields (last_passing_tier_a,
-// last_passing_tier_b) are deferred to v0.2 per
-// repo-bma-systema-issue-#171 amendment.
+// TierVerification records a {timestamp, substrate_commit_sha} pair
+// for a substrate-credibility tier (Tier A = PR-gating, Tier B =
+// nightly) per Spec 9.2 §3.1 amendment (substrate-credibility-window
+// for mode (b) extraction-and-execute).
+//
+// SubstrateCommitSHA MUST equal the parent ComputeManifest.Substrate.
+// CommitSHA for the verification to be considered current; otherwise
+// the substrate has had a code change since the last passing
+// verification and the corresponding tier is treated as stale.
+type TierVerification struct {
+	Timestamp          time.Time `yaml:"timestamp" json:"timestamp"`
+	SubstrateCommitSHA string    `yaml:"substrate_commit_sha" json:"substrate_commit_sha"`
+}
+
+// Credibility carries the substrate-credibility window fields per
+// Spec 9.2 §3.1 amendment (added 2026-05-18 as Phase B of
+// repo-bma-systema-issue-#171). The fields are pointers so that v0.1
+// manifests (which omit credibility entirely) round-trip cleanly as
+// nil; v0.2+ manifests populate them.
+type Credibility struct {
+	LastPassingTierA *TierVerification `yaml:"last_passing_tier_a,omitempty" json:"last_passing_tier_a,omitempty"`
+	LastPassingTierB *TierVerification `yaml:"last_passing_tier_b,omitempty" json:"last_passing_tier_b,omitempty"`
+}
+
+// ComputeManifest is the v0.1/v0.2 typed snapshot of the Wyrd-owned
+// Compute Manifest.
+//
+// v0.2 (2026-05-18; per repo-bma-systema-issue-#171 Phase B):
+// Credibility carries the substrate-credibility window fields per
+// Spec 9.2 §3.1 amendment. v0.1 manifests omit Credibility (nil
+// pointer); v0.2 manifests populate it. The IsModeBEligible
+// predicate dispatches on phase + credibility state.
 //
 // Forward-compatibility: unknown top-level YAML keys are silently
 // ignored by the loader (gopkg.in/yaml.v3 default); a v0.2-shaped
-// manifest is consumable by a v0.1 reader with v0.1-only semantics.
+// manifest is consumable by a v0.1 reader with v0.1-only semantics
+// (the Credibility block is unmarshaled into the *Credibility
+// pointer if present; absent for v0.1-shaped data).
 // Per @bma-implementor PR #58 non-blocking observation.
 type ComputeManifest struct {
-	Version    string               `yaml:"version" json:"version"`
-	AuthoredAt time.Time            `yaml:"authored_at" json:"authored_at"`
-	Phase      ComputeManifestPhase `yaml:"phase" json:"phase"`
-	Substrate  Substrate            `yaml:"substrate" json:"substrate"`
+	Version     string               `yaml:"version" json:"version"`
+	AuthoredAt  time.Time            `yaml:"authored_at" json:"authored_at"`
+	Phase       ComputeManifestPhase `yaml:"phase" json:"phase"`
+	Substrate   Substrate            `yaml:"substrate" json:"substrate"`
+	Credibility *Credibility         `yaml:"credibility,omitempty" json:"credibility,omitempty"`
 }
 
 // Sentinel errors per design doc §6. Consumers (BMA reins wrapper,
@@ -247,4 +278,118 @@ func isKnownSubstrateKind(k SubstrateKind) bool {
 		return true
 	}
 	return false
+}
+
+// IsBestEffortPhase reports whether the current phase is one where
+// Tier B credibility is best-effort (Crawl, Toddle) vs strict
+// (Walk-α and later). Per Spec 9.2 §3.1 amendment phase-conditional
+// matrix.
+func (p ComputeManifestPhase) IsBestEffortPhase() bool {
+	switch p {
+	case PhaseCrawl, PhaseToddle:
+		return true
+	}
+	return false
+}
+
+// IsModeBEligible reports whether the manifest's substrate-
+// credibility state permits a mode-(b) extraction-and-execute
+// promotion right now (per Spec 9.2 §3.1 amendment).
+//
+// Phase-conditional behavior:
+//
+//   - Crawl/Toddle (best-effort): returns (true, "best-effort") when
+//     credibility is absent or Tier B is stale. The federation CI
+//     mode-(b) gate consumes this as a warning, not a failure.
+//   - Walk-α and later (strict): requires BOTH (a) Tier A SHA-match
+//     against current substrate.commit_sha AND (b) Tier B timestamp
+//     within `window` from `now`. Returns (false, <specific cause>)
+//     if either condition fails.
+//
+// The mode-(a) type-instantiation path is unaffected and not
+// evaluated here (mode (a) has no runtime dependency on substrate
+// credibility).
+//
+// Tier A vs Tier B SHA-mismatch asymmetry (per @qbp-cu-implementor
+// PR #62 Concern 2 doc-comment ask): Tier A SHA mismatch is
+// UNCONDITIONAL BLOCK (no best-effort branch) because Tier A is
+// the per-PR gate — a SHA change since the last passing Tier A
+// means the substrate has not been gated for the current code,
+// which is a substrate-correctness problem regardless of phase.
+// Tier B SHA mismatch is PHASE-CONDITIONAL (best-effort in
+// Crawl/Toddle; strict at Walk-α+) because Tier B is the nightly
+// cadence — during Crawl where Tier B isn't yet operational, an
+// out-of-sync Tier B SHA is expected and tolerable; at Walk-α+ when
+// Tier B is running, drift is a real signal of substrate-credibility
+// erosion. Per Spec 9.2 §3.1 "Failure handling" + the
+// repo-qbp-compute-unit-pr-#35 §3.6 boundary contract.
+//
+// Per Spec 9.2 §3.1 + repo-bma-systema-issue-#171 closes-when
+// criterion 2. The federation CI workflow landing via Phase B-PR-8
+// (`.github/workflows/ci-compute-manifest.yml`) calls this predicate
+// with `now = time.Now()` and `window = 72*time.Hour` for Walk-α
+// (per Spec 9.2 §3.1 fix-pass on inter PR #6: federation-pattern
+// reuse with BMA's 72h Step 8 continuous-operation gate; supersedes
+// the original 24h speculation).
+func (m *ComputeManifest) IsModeBEligible(now time.Time, window time.Duration) (eligible bool, reason string) {
+	bestEffort := m.Phase.IsBestEffortPhase()
+
+	// Substrate.CommitSHA must be a real SHA (not the bootstrap
+	// sentinel) for any credibility check to be meaningful. If the
+	// substrate is still bootstrap-pending, mode (b) eligibility is
+	// best-effort regardless of phase (no real substrate to verify).
+	if m.Substrate.CommitSHA == BootstrapSentinel {
+		return true, "best-effort: substrate.commit_sha is bootstrap sentinel"
+	}
+
+	if m.Credibility == nil {
+		if bestEffort {
+			return true, "best-effort: credibility block absent (Crawl/Toddle phase)"
+		}
+		return false, fmt.Sprintf("credibility block absent but phase %q is strict (Walk-α or later)", m.Phase)
+	}
+
+	// Tier A: SHA must match current substrate.commit_sha
+	a := m.Credibility.LastPassingTierA
+	if a == nil {
+		if bestEffort {
+			return true, "best-effort: last_passing_tier_a absent (Crawl/Toddle phase)"
+		}
+		return false, "last_passing_tier_a absent (strict phase)"
+	}
+	if a.SubstrateCommitSHA != m.Substrate.CommitSHA {
+		return false, fmt.Sprintf("Tier A SHA mismatch: last_passing_tier_a.substrate_commit_sha=%q vs current substrate.commit_sha=%q (substrate has changed since last passing Tier A)", a.SubstrateCommitSHA, m.Substrate.CommitSHA)
+	}
+
+	// Tier B: timestamp must be within window of now
+	b := m.Credibility.LastPassingTierB
+	if b == nil {
+		if bestEffort {
+			return true, "best-effort: last_passing_tier_b absent (Crawl/Toddle phase)"
+		}
+		return false, "last_passing_tier_b absent (strict phase)"
+	}
+	if b.SubstrateCommitSHA != m.Substrate.CommitSHA {
+		if bestEffort {
+			return true, "best-effort: Tier B SHA mismatch (Crawl/Toddle phase tolerates)"
+		}
+		return false, fmt.Sprintf("Tier B SHA mismatch: last_passing_tier_b.substrate_commit_sha=%q vs current substrate.commit_sha=%q", b.SubstrateCommitSHA, m.Substrate.CommitSHA)
+	}
+	age := now.Sub(b.Timestamp)
+	if age > window {
+		if bestEffort {
+			return true, fmt.Sprintf("best-effort: Tier B is %s old (window %s; Crawl/Toddle phase tolerates)", age.Round(time.Second), window)
+		}
+		return false, fmt.Sprintf("Tier B is %s old; exceeds window %s (strict phase)", age.Round(time.Second), window)
+	}
+	if age < 0 {
+		// Future-timestamp Tier B is a clock-skew or paperwork bug;
+		// reject in strict phase, allow with caution in best-effort.
+		if bestEffort {
+			return true, fmt.Sprintf("best-effort: Tier B timestamp is in the future by %s (Crawl/Toddle phase tolerates)", (-age).Round(time.Second))
+		}
+		return false, fmt.Sprintf("Tier B timestamp is in the future by %s (clock skew or paperwork bug)", (-age).Round(time.Second))
+	}
+
+	return true, "ok"
 }
