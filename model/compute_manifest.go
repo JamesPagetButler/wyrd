@@ -310,10 +310,27 @@ func (p ComputeManifestPhase) IsBestEffortPhase() bool {
 // evaluated here (mode (a) has no runtime dependency on substrate
 // credibility).
 //
+// Tier A vs Tier B SHA-mismatch asymmetry (per @qbp-cu-implementor
+// PR #62 Concern 2 doc-comment ask): Tier A SHA mismatch is
+// UNCONDITIONAL BLOCK (no best-effort branch) because Tier A is
+// the per-PR gate — a SHA change since the last passing Tier A
+// means the substrate has not been gated for the current code,
+// which is a substrate-correctness problem regardless of phase.
+// Tier B SHA mismatch is PHASE-CONDITIONAL (best-effort in
+// Crawl/Toddle; strict at Walk-α+) because Tier B is the nightly
+// cadence — during Crawl where Tier B isn't yet operational, an
+// out-of-sync Tier B SHA is expected and tolerable; at Walk-α+ when
+// Tier B is running, drift is a real signal of substrate-credibility
+// erosion. Per Spec 9.2 §3.1 "Failure handling" + the
+// repo-qbp-compute-unit-pr-#35 §3.6 boundary contract.
+//
 // Per Spec 9.2 §3.1 + repo-bma-systema-issue-#171 closes-when
 // criterion 2. The federation CI workflow landing via Phase B-PR-8
 // (`.github/workflows/ci-compute-manifest.yml`) calls this predicate
-// with `now = time.Now()` and `window = 24*time.Hour` for Walk-α.
+// with `now = time.Now()` and `window = 72*time.Hour` for Walk-α
+// (per Spec 9.2 §3.1 fix-pass on inter PR #6: federation-pattern
+// reuse with BMA's 72h Step 8 continuous-operation gate; supersedes
+// the original 24h speculation).
 func (m *ComputeManifest) IsModeBEligible(now time.Time, window time.Duration) (eligible bool, reason string) {
 	bestEffort := m.Phase.IsBestEffortPhase()
 
