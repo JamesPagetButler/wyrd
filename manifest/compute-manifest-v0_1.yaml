@@ -26,7 +26,15 @@ substrate:
   # exists for the QBP-CU emulator; sentinel is accepted only when
   # federation CI runs with opts.AllowBootstrapSentinel = true on the
   # manifest-bootstrap PR. v0.2 PRs MUST pin a real 40-char hex SHA.
-  pinned_tag: "v0.1.0"
+  pinned_tag: "v0.1.0-rc1"
+  # Matches Wyrd go.mod pin (qbp-compute-unit/emulator v0.1.0-rc1)
+  # and the upstream git tag (emulator/v0.1.0-rc1) on origin. Per
+  # @qbp-cu-implementor PR #59 Concern 1: pinned_tag tracks the active
+  # substrate identity (pre-release rc1 here), not the eventual
+  # stable target. v0.2 housekeeping (filed parallel to repo-bma-
+  # systema-issue-#171) clarifies git-tag-vs-module-version
+  # semantics; v0.1 ships matching-current-pin per principle of
+  # least surprise.
 
 # v0.2 extension placeholder (per repo-bma-systema-issue-#171):
 # credibility:

@@ -201,7 +201,11 @@ func (m *ComputeManifest) Validate(opts LoadOptions) error {
 	if m.AuthoredAt.After(time.Now()) {
 		return fmt.Errorf("%w: rule 2: authored_at %s is in the future", ErrComputeManifestInvalid, m.AuthoredAt.Format(time.RFC3339))
 	}
-	// Rule 3: phase enum
+	// Rule 3: phase enum membership (implicit via LegalPhaseKindPairs
+	// key set; Rule 8 cross-check would also catch unknown phases, but
+	// checking here gives a clearer error message attributing the
+	// failure to Rule 3). Per @bma-implementor PR #59 non-blocking
+	// observation.
 	if _, ok := LegalPhaseKindPairs[m.Phase]; !ok {
 		return fmt.Errorf("%w: rule 3: phase %q is not a known ComputeManifestPhase", ErrComputeManifestInvalid, m.Phase)
 	}
