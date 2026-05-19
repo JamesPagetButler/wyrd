@@ -49,3 +49,7 @@ import Wyrd.ComputeManifest
 -- Phase 2 (extension) — Substrate execution trace structure for the
 -- Translation Functor §4.2 substrate-tier invariant (Phase C-PR-11)
 import Wyrd.SubstrateTrace
+
+-- Phase 2 (extension) — Substrate-tier theorem: cycle-counter
+-- monotonic per phase (Phase C-PR-12; A22 §4.2 sovereignty invariant)
+import Wyrd.CycleCounterCrossPhase
