@@ -1,0 +1,15 @@
+# extract-cycle-counter-proof — mode-(b) extraction harness run log
+# Per repo-bma-systema-issue-#170 Phase C-PR-13; substrate-tier theorem
+# Wyrd.CycleCounterCrossPhase.cycle_counter_monotonic_per_phase (PR #66, c81b7a7).
+captured_at=2026-05-20T21:49:24Z
+manifest_phase=crawl
+substrate_repo=github.com/JamesPagetButler/qbp-compute-unit
+substrate_module=emulator
+substrate_pinned_tag=v0.1.0-rc1
+instructions_retired=1024
+first_cycle=1
+last_cycle=1024
+cycle_delta=1023
+predicate_monotonic=true
+predicate_advance_by_one=true
+verdict=mode_b_eligible
