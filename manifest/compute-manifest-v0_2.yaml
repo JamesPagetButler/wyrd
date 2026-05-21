@@ -26,11 +26,17 @@ substrate:
   repo: "github.com/JamesPagetButler/qbp-compute-unit"
   module: "emulator"
   # Module REQUIRED when kind == emulator (validation rule 9).
-  commit_sha: "TBD-pinned-at-PR-time"
-  # Bootstrap sentinel per design doc §2.5; v0.2 manifest carries the
-  # sentinel until the first real Tier A blessing exists for the
-  # QBP-CU emulator. The credibility block below reflects "no Tier A
-  # blessing yet" — Crawl phase tolerates this as best-effort.
+  commit_sha: "0bef732cc76c187084079704a23268cb5f8fdc5a"
+  # Pinned to the qbp-compute-unit/emulator v0.1.0-rc1 git tag's
+  # underlying commit (verified via `gh api repos/JamesPagetButler/
+  # qbp-compute-unit/git/refs/tags/emulator/v0.1.0-rc1` annotated-tag
+  # peel → target_type=commit; SHA above). Bootstrap sentinel retired
+  # at repo-wyrd-pr-#69, the federation's first substrate-tier
+  # promotion per Spec 9.2 §9 first-10, per this YAML's prior v0.2
+  # contract: "v0.2 PRs MUST pin a real 40-char hex SHA." Credibility
+  # block remains null at Crawl phase (Tier A/B cadence not yet
+  # operational); IsModeBEligible returns (true, "best-effort:
+  # credibility block absent (Crawl/Toddle phase)") on this manifest.
   pinned_tag: "v0.1.0-rc1"
   # Matches Wyrd go.mod pin + upstream git tag (emulator/v0.1.0-rc1)
   # per @qbp-cu-implementor PR #59 Concern 1 fix.
