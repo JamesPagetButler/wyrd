@@ -428,16 +428,16 @@ func TestLoadComputeManifest_ParseError(t *testing.T) {
 }
 
 func TestLoadComputeManifest_ActualManifestFile(t *testing.T) {
-	// Load the actual manifest/compute-manifest-v0_1.yaml shipped in
-	// this PR (relative to the package root). This is the bootstrap
-	// PR; AllowBootstrapSentinel must be true.
-	//
-	// The test package runs from model/; the manifest is two levels
-	// up... well, just one level up: ../manifest/.
+	// Load the actual manifest/compute-manifest-v0_2.yaml shipped on
+	// main (per manifest/CURRENT). As of repo-wyrd-pr-#69 (federation's
+	// first substrate-tier promotion), the bootstrap sentinel was
+	// retired and a real 40-char hex SHA pinned for the
+	// qbp-compute-unit/emulator@v0.1.0-rc1 commit. Strict-default load
+	// MUST succeed.
 	root := ".."
-	m, err := LoadComputeManifestWithOptions(root, happyOpts())
+	m, err := LoadComputeManifest(root)
 	if err != nil {
-		t.Fatalf("loading the actual shipped manifest must pass with AllowBootstrapSentinel=true; got %v", err)
+		t.Fatalf("loading the actual shipped manifest must pass with strict-default; got %v", err)
 	}
 	if m.Phase != PhaseCrawl {
 		t.Errorf("actual manifest phase: got %s, want %s", m.Phase, PhaseCrawl)
@@ -445,20 +445,25 @@ func TestLoadComputeManifest_ActualManifestFile(t *testing.T) {
 	if m.Substrate.Kind != SubstrateEmulator {
 		t.Errorf("actual manifest substrate.kind: got %s, want %s", m.Substrate.Kind, SubstrateEmulator)
 	}
-	if m.Substrate.CommitSHA != BootstrapSentinel {
-		t.Errorf("actual manifest substrate.commit_sha: got %q, want %q (bootstrap PR)", m.Substrate.CommitSHA, BootstrapSentinel)
+	if m.Substrate.CommitSHA == BootstrapSentinel {
+		t.Errorf("actual manifest substrate.commit_sha is still bootstrap sentinel; expected a real 40-char hex SHA (sentinel retired at PR #69)")
+	}
+	if !SubstrateCommitSHARegex.MatchString(m.Substrate.CommitSHA) {
+		t.Errorf("actual manifest substrate.commit_sha %q is not a valid 40-char hex SHA", m.Substrate.CommitSHA)
 	}
 }
 
-func TestLoadComputeManifest_ActualManifestFile_StrictRejectsSentinel(t *testing.T) {
-	// Same actual file, but strict opts. Documents that the federation
-	// CI workflow (Phase B-PR-8) must set AllowBootstrapSentinel=true
-	// on the bootstrap branch, OR the impl-1 PR must coordinate with
-	// qbp-cu-implementor to pin a real SHA.
+func TestLoadComputeManifest_ActualManifestFile_AllowBootstrapNoLongerNeeded(t *testing.T) {
+	// Companion to TestLoadComputeManifest_ActualManifestFile —
+	// documents that AllowBootstrapSentinel is no longer required for
+	// the shipped manifest (sentinel retired at PR #69). Both strict-
+	// default and opt-in loads succeed.
 	root := ".."
-	_, err := LoadComputeManifest(root)
-	if !errors.Is(err, ErrComputeManifestInvalid) {
-		t.Fatalf("strict load of bootstrap manifest must fail with rule-7; got %v", err)
+	if _, err := LoadComputeManifest(root); err != nil {
+		t.Errorf("strict-default load should succeed (sentinel retired): %v", err)
+	}
+	if _, err := LoadComputeManifestWithOptions(root, happyOpts()); err != nil {
+		t.Errorf("opt-in load should also succeed: %v", err)
 	}
 }
 

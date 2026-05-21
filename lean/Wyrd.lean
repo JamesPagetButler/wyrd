@@ -53,3 +53,10 @@ import Wyrd.SubstrateTrace
 -- Phase 2 (extension) — Substrate-tier theorem: cycle-counter
 -- monotonic per phase (Phase C-PR-12; A22 §4.2 sovereignty invariant)
 import Wyrd.CycleCounterCrossPhase
+
+-- Substrate-tier promotion registry — single grep-discoverable index of
+-- all theorems constitutionally promoted to substrate-tier per
+-- Spec 9.2 §2 (promotion gate) + §5 (substrate immutability).
+-- Adding to Wyrd.Substrate is the promotion action; per Spec 9.2 §9,
+-- first-10 substrate promotions require explicit @beekeeper HVR.
+import Wyrd.Substrate
