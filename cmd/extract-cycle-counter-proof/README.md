@@ -63,7 +63,12 @@ The exclusion is acknowledged in PR #63 §10 NOT-DECIDED:
 
 > Cycle-counter monotonicity vs concurrent dispatch ... out of scope for v0.1; the `cpu.go canonical` resolution in repo-qbp-compute-unit-pr-#33 §5.4 is the Crawl-phase answer; Walk-α may require an A22 §4.2 amendment.
 
-v0.2 theorem refinement may relax `AdvanceByOne` to admit composite-op cycle accounting (or admit a per-instruction `cycle_cost` field on `InstructionEvent`). The current harness validates the substrate against the v0.1 strict-equality predicate using the documented subset; full-coverage verification of every opcode is a v0.2 follow-up.
+v0.2 theorem refinement has two candidate paths:
+
+- **(option 1)** Relax `AdvanceByOne` to admit composite-op cycle accounting (`cycle[i+1] ≥ cycle[i] + 1`). Admits more substrates but tells consumers less about timing structure.
+- **(option 2)** Add a per-instruction `cycle_cost` field on `InstructionEvent` so the predicate becomes `cycle[i+1] = cycle[i] + cycle_cost(opcode_i)`. Preserves the strict-equality contract per cost-class; consumers can reason about cycle-budget allocation per opcode.
+
+Per @qbp-cu-implementor PR #67 §I4 read, **option 2 is the substrate-publisher-preferred path** (preserves strict-equality contract; admits composite ops without information loss). `cycle_cost` would be parameterized as `ComputeManifestPhase → Opcode → Nat` and documented per-phase per-opcode in the Compute Manifest `verified_invariants` schema slot (already reserved per PR #58 design §2.2). The current harness validates the substrate against the v0.1 strict-equality predicate using the documented single-cycle subset; full-coverage verification of every opcode is a v0.2 follow-up.
 
 ## Lean ↔ Go drift detection
 
@@ -88,7 +93,20 @@ The `-update` flag regenerates `testdata/lean-go-parity.snap` from current sourc
 
 ## Federation-canonical use (C-PR-14 + beyond)
 
-The promotion PR per Spec 9.2 §2 (C-PR-14; first-10 substrate-tier promotion per Spec 9.2 §9) cites this harness's run log as the mode-(b) verification evidence. The federation CI workflow (`.github/workflows/ci-compute-manifest.yml`, Phase B-PR-8 merged `e02e67a`) exercises this binary on any PR labeled `mode-b-promotion`; passing CI = mode-(b) verification clean against the current Compute Manifest substrate.
+This harness produces mode-(b) verification **evidence** — the committed run log at `testdata/crawl-emulator-run.log` — that the promotion PR per Spec 9.2 §2 (C-PR-14; first-10 substrate-tier promotion per Spec 9.2 §9) cites as the mode-(b) verification artifact.
+
+**The federation CI workflow does NOT invoke this harness directly.** Per @bma-implementor PR #67 §I4 read, the CI workflow (`.github/workflows/ci-compute-manifest.yml`, Phase B-PR-8 merged `e02e67a`) runs `cmd/mode-b-eligibility-check` only — which validates the **Compute Manifest credibility window** (Spec 9.2 §3.1 amendment), not the substrate-trace predicates this harness validates.
+
+The actual mode-(b) verification chain is:
+
+1. Developer runs this harness locally against the current substrate (`go run ./cmd/extract-cycle-counter-proof --root . --log testdata/crawl-emulator-run.log`)
+2. Predicates validated; verdict logged; log file committed
+3. CI runs `TestLeanGoParityDrift` → paired Lean predicate source ↔ Go validator source can't drift without an explicit `-update` ack gesture
+4. CI runs `cmd/mode-b-eligibility-check` → Compute Manifest credibility window verified for the `mode-b-promotion`-labeled PR
+5. C-PR-14 promotion PR cites the committed run log + the CI drift-test green + the credibility-window verdict as **combined mode-(b) evidence**
+6. Beekeeper HVR (Spec 9.2 §9 first-10) weighs all three artifacts together
+
+A future workflow refinement may add this harness to the CI gate directly (so the verification chain is fully automated rather than depending on developer-committed evidence). That's a Phase D+ refinement; the current evidence-based path is correct for v0.1 + the drift-test forcing function preserves correctness across the merge boundary.
 
 ## Related artifacts
 
