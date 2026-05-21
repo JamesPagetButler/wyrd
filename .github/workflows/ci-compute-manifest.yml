@@ -28,6 +28,8 @@ on:
       - 'model/compute_manifest.go'
       - 'cmd/mode-b-eligibility-check/**'
       - '.github/workflows/ci-compute-manifest.yml'
+      - 'lean/Wyrd/Substrate.lean'
+      - 'doc/promotion/**'
   pull_request:
     branches: [main]
     paths:
@@ -35,6 +37,15 @@ on:
       - 'model/compute_manifest.go'
       - 'cmd/mode-b-eligibility-check/**'
       - '.github/workflows/ci-compute-manifest.yml'
+      # Promotion-PR file regions: any PR adding to the substrate-tier
+      # registry (Wyrd.Substrate) or filing a promotion declaration
+      # (doc/promotion/<YYYY-MM>-<theorem>.md) must fire the gate so
+      # the `mode-b-eligibility` job runs for `mode-b-promotion`-labeled
+      # PRs. Added in PR #69 (the first promotion PR) after the gate
+      # failed to fire on this PR class — Phase B-PR-8 path filter was
+      # too narrow at original ship.
+      - 'lean/Wyrd/Substrate.lean'
+      - 'doc/promotion/**'
     types: [opened, synchronize, reopened, labeled, unlabeled]
 
 permissions:
