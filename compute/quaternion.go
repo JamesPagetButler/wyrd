@@ -23,12 +23,12 @@ import (
 //   - an in-tree Cayley-Dickson construction (deferred to v0.2+).
 //
 // Soundness: this is the runtime implementation of
-// `Quaternion.mul` in `lean/Wyrd/Foundations.lean`'s ℍ algebra.
-// `Wyrd.Capability.sandwich_mul` (T2.4) is the load-bearing soundness
-// theorem for compositions of this product. Phase 5 ISA semantics
-// (issue #5) will land an ε-tolerance theorem specifying the runtime
-// behaviour at each Width, including the QW128 DD path's
-// renormalisation guarantees.
+// `Wyrd.HamiltonProduct.hamilton_product_formula` in
+// `lean/Wyrd/HamiltonProduct.lean` — the Wyrd-local named theorem
+// proving the 16-mul/12-add formula equals mathlib4 Quaternion.mul.
+// Phase 5 ISA semantics (issue #5) will land an ε-tolerance theorem
+// specifying the runtime behaviour at each Width, including the
+// QW128 DD path's renormalisation guarantees.
 //
 // [wyrd#2]: https://github.com/JamesPagetButler/wyrd/issues/2
 func HamiltonProduct(a, b model.Weight) (model.Weight, error) {
