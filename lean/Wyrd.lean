@@ -54,6 +54,11 @@ import Wyrd.SubstrateTrace
 -- monotonic per phase (Phase C-PR-12; A22 §4.2 sovereignty invariant)
 import Wyrd.CycleCounterCrossPhase
 
+-- Phase 1 (extension) — Wyrd-local Hamilton product formula theorem
+-- (wyrd-issue-#68; resolves NT_SEAM_RECORD_001 + NT_SEAM_RECORD_002;
+-- Notary Cycle 1 Competency #1 Lean→Coq cross-prover anchor)
+import Wyrd.HamiltonProduct
+
 -- Substrate-tier promotion registry — single grep-discoverable index of
 -- all theorems constitutionally promoted to substrate-tier per
 -- Spec 9.2 §2 (promotion gate) + §5 (substrate immutability).
