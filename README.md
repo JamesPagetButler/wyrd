@@ -105,6 +105,23 @@ func (b *Bridge) Promote(id model.HyperedgeID) error { ... }
 Diverging from the spec without updating the theorem (or vice versa)
 is an audit failure.
 
+## Theory anchors
+
+Wyrd's substrate-level authority model and its cross-tenant interactions
+are governed by theory documents that live in the federation
+[`inter/theory/`](https://github.com/JamesPagetButler/inter/tree/main/theory)
+directory. The canonical cross-references for Wyrd consumers:
+
+| Theory | Location | What it governs |
+|---|---|---|
+| Verðandi Authority Theory v0.2 | `inter/theory/Verdandi-Authority-Theory-v0.2.md` | Ring-algebra authority model (ℂ/ℍ/𝕆/𝕊); three-gap check; delegation algebra; succession pacts |
+| Verðandi Addendum A | `inter/theory/Verdandi-Authority-Theory-v0.2-addendum-A.md` | Grantable vs constructed caps (§A.4); witnessed vs declared provenance (§A.5); tamper-evident timestamps (§A.8) |
+| BMA Theory v3.0 | `inter/theory/BMA-Theory-Consolidated-v3_0-DRAFT.md` | Pentagon Pod architecture (§2.1); ring-tier cognitive layer assignments (A20.0) |
+
+The Lean substrate-tier engine for Verðandi (`lean/Wyrd/Verdandi.lean`) is
+Walk-phase scope; it will import these theory documents as design anchors when
+filed. The tracking issue is [wyrd#71](https://github.com/JamesPagetButler/wyrd/issues/71).
+
 ## Documentation
 
 - [`doc/integration/cth.md`](doc/integration/cth.md) — how CTH consumes Wyrd
