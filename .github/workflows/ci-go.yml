@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   # Modules under the JamesPagetButler/* prefix are private; bypass the
   # public Go module proxy + sum database. Closeout Q7 (PATs with 90-day
