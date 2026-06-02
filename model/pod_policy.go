@@ -4,8 +4,9 @@ package model
 // per BMA Spec v9.1 §14 + Theory v3.0 §2.1 (A20.0 §0.2 ring assignments).
 //
 // Ring-tier mapping (A20.0 §0.2):
-//   Conscious  = ℍ Supervisor ring  → authority to write cross-cell
-//   Subconscious = ℂ User ring      → authority within bilateral cell
+//
+//	Conscious  = ℍ Supervisor ring  → authority to write cross-cell
+//	Subconscious = ℂ User ring      → authority within bilateral cell
 //
 // Dev pod (Walk-phase) is deliberately absent — deferred per the
 // Crawl/Toddle phase table (BMA Spec v9.1 §14.9 gate criterion).

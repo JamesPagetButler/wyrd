@@ -6,10 +6,10 @@ import (
 
 func TestPodPolicy_KnownTypes(t *testing.T) {
 	cases := []struct {
-		name      string
-		typ       NodeType
-		wantImm   bool
-		wantSal   float64
+		name    string
+		typ     NodeType
+		wantImm bool
+		wantSal float64
 	}{
 		{"conscious-a", NodeTypePodConsciousA, true, 1.0},
 		{"conscious-b", NodeTypePodConsciousB, true, 1.0},
