@@ -39,12 +39,23 @@ If CTH v0.3 needs to unblock before Walk-α schema lands:
 - `lab_identity` metadata field as proxy for lab-open-set
 - Full gluing machinery (`NT_GLUING_COHERENCE`) deferred to Walk-α
 
+## Storage placement
+
+- Trust-section nodes: **Tier 1** (semantic memory)
+- Gluing-coherence records: **Tier 2**
+
+Gluing operations are axis-specific: meet for reproducibility/stats/method/
+independence, join for theory. They live in CTH/Edda logic, not in Wyrd.
+
 ## Walk-α implementation
 
-The three node types are tracked as a Walk-α deliverable in **wyrd-issue-#75**.
+The three node types are tracked as a Walk-α deliverable in **wyrd-issue-#75**
+(the canonical tracker — wyrd-issue-#80 was a duplicate filed during the
+inter#41 H4 sweep and is consolidated into #75).
 
 ## Cross-references
 
 - wyrd-issue-#74 — original design question (closed by this doc)
-- wyrd-issue-#75 — Walk-α implementation tracker
+- wyrd-issue-#75 — Walk-α implementation tracker (canonical)
+- wyrd-issue-#80 — duplicate of #75, closed by the consolidation
 - inter#41 — full sheaf trust model framing and the scenario walkthrough that surfaced this question
