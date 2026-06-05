@@ -74,6 +74,8 @@ func TestSoundnessCitationsResolve(t *testing.T) {
 
 	citations := 0
 	for _, path := range goFiles {
+		// #nosec G304 -- path comes from filepath.Walk over the repo's
+		// own source tree (test-only sweep; no external input).
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatalf("read %s: %v", path, err)
