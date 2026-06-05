@@ -1,9 +1,17 @@
 package model
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 )
+
+// ErrNodeNotFound is the package-level sentinel signalling that a
+// mutation targeted a node ID not present in the graph. Returned by
+// [Graph.UpdateNode] and [Graph.UpdateNodeWithCapability], which
+// replace existing nodes and never create new ones. Detect with
+// [errors.Is].
+var ErrNodeNotFound = errors.New("model: graph: node not found")
 
 // Graph is an in-memory typed hypergraph. It maintains node and edge
 // dictionaries plus an incidence index (node → edges containing it)
@@ -248,6 +256,48 @@ func (g *Graph) Hyperedges() []Hyperedge {
 	return out
 }
 
+// UpdateNode replaces the existing node with ID n.ID with the supplied
+// Node value. UpdateNode does NOT create new nodes: if no node with
+// n.ID exists, it returns an error wrapping [ErrNodeNotFound].
+//
+// Hyperedges referencing n.ID are unaffected — the incidence index is
+// keyed by NodeID, which is immutable across an update by construction
+// (the replacement is stored under the same ID).
+//
+// This is the internal-substrate path; external/tenant writes should
+// go through [Graph.UpdateNodeWithCapability].
+//
+// Soundness: per `Wyrd.TierImmunity.tier_immune_node_preserves_eviction`
+// (PR #46), the immunity guarantee is stated against the node's
+// immunity state at eviction time (temporal-snapshot framing), so
+// flipping TierImmune on a live node is structurally sound — each
+// tick's eviction respects the then-current immunity bit. No new Lean
+// theorem is required for update semantics (wyrd-issue-#57).
+//
+// Concurrency: holds the write lock for the full update window;
+// observer-out per ADR-003 §I3 (same lock class as [Graph.AddNode]).
+func (g *Graph) UpdateNode(n Node) error {
+	if err := n.Validate(); err != nil {
+		return err
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.updateNodeLocked(n)
+}
+
+// updateNodeLocked performs the replace-by-ID mutation. The caller
+// MUST hold g.mu.Lock(); this helper exists so that
+// [Graph.UpdateNodeWithCapability] can run its existing-tier
+// capability check and the mutation inside ONE critical section
+// (TOCTOU-free per @bma-implementor PR #82 §I4 concern).
+func (g *Graph) updateNodeLocked(n Node) error {
+	if _, exists := g.nodes[n.ID]; !exists {
+		return fmt.Errorf("%w: %s", ErrNodeNotFound, n.ID)
+	}
+	g.nodes[n.ID] = n
+	return nil
+}
+
 // AddNodeWithCapability is the capability-gated form of [Graph.AddNode].
 // Returns [CapabilityError] (Unwraps to [ErrCapabilityViolation]) if
 // cap does not authorise writes at n.Tier; otherwise behaves exactly
@@ -279,6 +329,55 @@ func (g *Graph) AddHyperedgeWithCapability(e Hyperedge, cap WriteCapability) err
 		return err
 	}
 	return g.AddHyperedge(e)
+}
+
+// UpdateNodeWithCapability is the capability-gated form of
+// [Graph.UpdateNode]. Returns [CapabilityError] (Unwraps to
+// [ErrCapabilityViolation]) if cap does not authorise the update;
+// otherwise behaves exactly like [Graph.UpdateNode].
+//
+// The capability check covers BOTH tiers involved: the tier of the
+// node currently stored under n.ID AND the tier of the replacement
+// value n. Checking only the replacement tier would let a holder
+// mutate a higher-tier node by writing a lower-tier value over it;
+// checking only the existing tier would let a holder elevate a node
+// into a tier it cannot write. Both directions cross the I1/I3
+// mutation boundary, so both require authorisation. For the common
+// case (tier unchanged — e.g. the BMA #159 T+5 TierImmune flip, or a
+// Hebbian Salience bump) the two checks coincide with the single
+// check specified in wyrd-issue-#57.
+//
+// The replacement-tier check runs first, so a capability violation
+// is reported in preference to not-found (the caller learns the
+// least information consistent with its authority — it cannot probe
+// for node existence at tiers it cannot write).
+//
+// Atomicity: the existing-tier check and the mutation run inside ONE
+// write-lock critical section (per @bma-implementor PR #82 §I4).
+// A check-then-act split across lock windows would reintroduce both
+// escape paths the dual check closes: a privileged writer could swap
+// the node to a higher tier between check and write, and a
+// concurrently-added high-tier node could be overwritten through the
+// not-found path without an existing-tier check.
+func (g *Graph) UpdateNodeWithCapability(n Node, cap WriteCapability) error {
+	// Replacement-tier check first: a holder that cannot write at
+	// n.Tier learns nothing about whether n.ID exists.
+	if err := cap.AllowsWrite(n.Tier); err != nil {
+		return err
+	}
+	if err := n.Validate(); err != nil {
+		return err
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	existing, ok := g.nodes[n.ID]
+	if !ok {
+		return fmt.Errorf("%w: %s", ErrNodeNotFound, n.ID)
+	}
+	if err := cap.AllowsWrite(existing.Tier); err != nil {
+		return err
+	}
+	return g.updateNodeLocked(n)
 }
 
 // RemoveHyperedgeWithCapability is the capability-gated form of
