@@ -33,11 +33,12 @@ var ErrBatchMissingNode = errors.New("model: batch: edge references node not in 
 // Soundness:
 //   - per-edge: same as [Bridge.Promote] (compute pkg), citing
 //     `Wyrd.Bridge.bridge_promote_preserves_count` (Phase 2 C-20c).
-//   - batch-level: a forthcoming Lean theorem
-//     `Wyrd.Bridge.bridge_promote_batch_preserves_count` (Phase 4
-//     v1.6, induction over the batch list) lifts C-20c to the batch
-//     case. The induction is small — the inductive step is one
-//     application of C-20c plus the trivial sum-conservation identity.
+//   - batch-level:
+//     `Wyrd.Bridge.bridge_promote_batch_preserves_count` (forthcoming
+//     Lean theorem; Phase 4 v1.6, induction over the batch list)
+//     lifts C-20c to the batch case. The induction is small — the
+//     inductive step is one application of C-20c plus the trivial
+//     sum-conservation identity.
 //   - I3 atomicity: the write Lock on both graphs is held continuously
 //     across the whole batch, satisfying the "observer out for the
 //     full duration of any structural action" requirement (ADR-003
