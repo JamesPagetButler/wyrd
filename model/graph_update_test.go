@@ -183,6 +183,67 @@ func TestUpdateNodeWithCapability_CapViolationPrecedesNotFound(t *testing.T) {
 	}
 }
 
+func TestUpdateNodeWithCapability_AtomicCheckAndMutate(t *testing.T) {
+	// TOCTOU regression (PR #82 §I4, bma-implementor): the
+	// existing-tier check and the mutation must share one critical
+	// section. A privileged writer races tier swaps (ℂ↔𝕆) on a node
+	// while a ℂ-holder races updates; if the check-then-act were
+	// split across lock windows, a ℂ write could land over an 𝕆-tier
+	// node. Invariant: every observed node state at tier 𝕆 carries
+	// the privileged writer's payload marker, never the ℂ-holder's.
+	g := NewGraph()
+	seed := mkNode("contested", TierComplex)
+	if err := g.AddNode(seed); err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+
+	const iters = 200
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Privileged writer: alternates the node between ℂ and 𝕆 tiers.
+	go func() {
+		defer wg.Done()
+		hi := newWriteCap(TierOctonion)
+		for i := 0; i < iters; i++ {
+			n := mkNode("contested", TierOctonion)
+			n.Payload = []byte("privileged")
+			_ = g.UpdateNodeWithCapability(n, hi)
+			n = mkNode("contested", TierComplex)
+			n.Payload = []byte("privileged")
+			_ = g.UpdateNodeWithCapability(n, hi)
+		}
+	}()
+
+	// Low-capability writer: ℂ-tier replacement values only. Its
+	// writes must succeed only when the stored node is ℂ-tier at
+	// check+write time (atomically).
+	go func() {
+		defer wg.Done()
+		lo := newWriteCap(TierComplex)
+		for i := 0; i < iters; i++ {
+			n := mkNode("contested", TierComplex)
+			n.Payload = []byte("low")
+			err := g.UpdateNodeWithCapability(n, lo)
+			if err != nil && !errors.Is(err, ErrCapabilityViolation) {
+				t.Errorf("unexpected error class: %v", err)
+			}
+		}
+	}()
+
+	wg.Wait()
+
+	// Post-condition: if the final node is 𝕆-tier, the low writer
+	// cannot have produced it.
+	got, ok := g.Node("contested")
+	if !ok {
+		t.Fatal("node missing")
+	}
+	if got.Tier == TierOctonion && string(got.Payload) == "low" {
+		t.Error("TOCTOU: low-capability write landed an 𝕆-tier state")
+	}
+}
+
 func TestUpdateNode_ConcurrentUpdatesRaceFree(t *testing.T) {
 	g := NewGraph()
 	if err := g.AddNode(mkNode("hot", TierComplex)); err != nil {

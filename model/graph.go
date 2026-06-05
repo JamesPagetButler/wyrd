@@ -282,6 +282,15 @@ func (g *Graph) UpdateNode(n Node) error {
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	return g.updateNodeLocked(n)
+}
+
+// updateNodeLocked performs the replace-by-ID mutation. The caller
+// MUST hold g.mu.Lock(); this helper exists so that
+// [Graph.UpdateNodeWithCapability] can run its existing-tier
+// capability check and the mutation inside ONE critical section
+// (TOCTOU-free per @bma-implementor PR #82 §I4 concern).
+func (g *Graph) updateNodeLocked(n Node) error {
 	if _, exists := g.nodes[n.ID]; !exists {
 		return fmt.Errorf("%w: %s", ErrNodeNotFound, n.ID)
 	}
@@ -338,30 +347,37 @@ func (g *Graph) AddHyperedgeWithCapability(e Hyperedge, cap WriteCapability) err
 // Hebbian Salience bump) the two checks coincide with the single
 // check specified in wyrd-issue-#57.
 //
-// If no node with n.ID exists, the not-found error is returned
-// WITHOUT a capability check only when the existing-tier lookup
-// fails; the replacement-tier check still runs first, so a
-// capability violation is reported in preference to not-found
-// (the caller learns the least information consistent with its
-// authority — it cannot probe for node existence at tiers it
-// cannot write).
+// The replacement-tier check runs first, so a capability violation
+// is reported in preference to not-found (the caller learns the
+// least information consistent with its authority — it cannot probe
+// for node existence at tiers it cannot write).
+//
+// Atomicity: the existing-tier check and the mutation run inside ONE
+// write-lock critical section (per @bma-implementor PR #82 §I4).
+// A check-then-act split across lock windows would reintroduce both
+// escape paths the dual check closes: a privileged writer could swap
+// the node to a higher tier between check and write, and a
+// concurrently-added high-tier node could be overwritten through the
+// not-found path without an existing-tier check.
 func (g *Graph) UpdateNodeWithCapability(n Node, cap WriteCapability) error {
 	// Replacement-tier check first: a holder that cannot write at
 	// n.Tier learns nothing about whether n.ID exists.
 	if err := cap.AllowsWrite(n.Tier); err != nil {
 		return err
 	}
-	g.mu.RLock()
+	if err := n.Validate(); err != nil {
+		return err
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	existing, ok := g.nodes[n.ID]
-	g.mu.RUnlock()
 	if !ok {
-		// Defer to the underlying method's not-found semantics.
-		return g.UpdateNode(n)
+		return fmt.Errorf("%w: %s", ErrNodeNotFound, n.ID)
 	}
 	if err := cap.AllowsWrite(existing.Tier); err != nil {
 		return err
 	}
-	return g.UpdateNode(n)
+	return g.updateNodeLocked(n)
 }
 
 // RemoveHyperedgeWithCapability is the capability-gated form of
