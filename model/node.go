@@ -47,10 +47,10 @@ type Node struct {
 	// explicit deletion via Graph.RemoveNodeWithCapability — that's a
 	// user mutation through the capability layer.
 	//
-	// Soundness: per (forthcoming)
-	// Wyrd.Hypergraph.tier_immune_node_preserves_eviction (W-Toddle-1),
-	// adding or evicting other nodes does not change the membership of
-	// {v : v.TierImmune}.
+	// Soundness: per
+	// Wyrd.TierImmunity.tier_immune_node_preserves_eviction (W-Toddle-1,
+	// PR #46), adding or evicting other nodes does not change the
+	// membership of {v : v.TierImmune}.
 	TierImmune bool `json:"tier_immune,omitempty"`
 
 	// Salience modulates eviction priority. Range 0.0..1.0.
