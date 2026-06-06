@@ -228,6 +228,48 @@ func TestNeighborhood_OrphanAnchor(t *testing.T) {
 	}
 }
 
+func TestNeighborhood_OrientationCarriedInWire(t *testing.T) {
+	// Seam check vs bma-systema PR #244: the boot-time mirror's
+	// provenance edges are ORIENTED (cert→seed "read-at-founding":
+	// IsSymmetric=false, Heads=[0], Tails=[1]). The shard must carry
+	// the arrows — a navigational map without direction loses the
+	// provenance semantics the mirror exists to record.
+	g := model.NewGraph()
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(g.AddNode(nbNode("cert", "bma.lineage.life-certificate", true, 1.0)))
+	must(g.AddNode(nbNode("seed1", "bma.seed", true, 1.0)))
+	prov := model.Hyperedge{
+		ID:          "prov-read-at-founding-seed1",
+		Nodes:       []model.NodeID{"cert", "seed1"},
+		Weight:      model.NewComplexWeight(1, 0),
+		IsSymmetric: false,
+		Created:     time.Unix(0, 0),
+		Heads:       []int{0}, // source: cert
+		Tails:       []int{1}, // sink: seed
+	}
+	must(g.AddHyperedge(prov))
+
+	sg, err := New(g).Neighborhood("cert", 1, 10)
+	if err != nil {
+		t.Fatalf("Neighborhood: %v", err)
+	}
+	if len(sg.Edges) != 1 {
+		t.Fatalf("len(edges) = %d, want 1", len(sg.Edges))
+	}
+	e := sg.Edges[0]
+	if e.IsSymmetric {
+		t.Error("oriented edge marked symmetric in shard")
+	}
+	if !reflect.DeepEqual(e.Heads, []int{0}) || !reflect.DeepEqual(e.Tails, []int{1}) {
+		t.Errorf("orientation dropped: Heads=%v Tails=%v, want [0]/[1]", e.Heads, e.Tails)
+	}
+}
+
 func TestNeighborhood_PayloadExcludedFromWire(t *testing.T) {
 	// Condition 1 (live-test seq=544): the Subgraph JSON is the
 	// Wyrd-owned canonical wire shape. Assert the shard is a MAP —

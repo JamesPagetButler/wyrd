@@ -44,11 +44,17 @@ type SubgraphNode struct {
 }
 
 // SubgraphEdge is the shard projection of a [model.Hyperedge]:
-// identity, membership, and symmetry flag.
+// identity, membership, symmetry, and orientation. Heads/Tails are
+// carried verbatim (indices into Nodes, per PR #31 §3) so oriented
+// provenance edges — cert→seed "read-at-founding", observation→cert —
+// keep their direction in the shard: a navigational map needs its
+// arrows. Empty for symmetric edges, mirroring the model invariant.
 type SubgraphEdge struct {
 	ID          model.HyperedgeID `json:"id"`
 	Nodes       []model.NodeID    `json:"nodes"`
 	IsSymmetric bool              `json:"is_symmetric,omitempty"`
+	Heads       []int             `json:"heads,omitempty"`
+	Tails       []int             `json:"tails,omitempty"`
 }
 
 // Neighborhood returns the depth-bounded BFS neighborhood of anchor
@@ -184,6 +190,8 @@ func (q *API) inducedEdges(visited map[model.NodeID]int) []SubgraphEdge {
 					ID:          e.ID,
 					Nodes:       append([]model.NodeID(nil), e.Nodes...),
 					IsSymmetric: e.IsSymmetric,
+					Heads:       append([]int(nil), e.Heads...),
+					Tails:       append([]int(nil), e.Tails...),
 				})
 			}
 		}
