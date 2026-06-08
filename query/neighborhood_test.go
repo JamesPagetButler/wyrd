@@ -17,6 +17,21 @@ import (
 // the BMA boot-time mirror shape: an NT_SEED-anchored / life-
 // certificate-anchored neighborhood with provenance edges.
 
+// Shared fixture literals (hoisted to satisfy goconst; mirror the BMA
+// boot-time-mirror node types).
+const (
+	certID   model.NodeID   = "cert"
+	seed1ID  model.NodeID   = "seed1"
+	seed2ID  model.NodeID   = "seed2"
+	obs1ID   model.NodeID   = "obs1"
+	obs2ID   model.NodeID   = "obs2"
+	obs3ID   model.NodeID   = "obs3"
+	orphanID model.NodeID   = "orphan"
+	certType model.NodeType = "bma.lineage.life-certificate"
+	seedType model.NodeType = "bma.seed"
+	obsType  model.NodeType = "bma.observation"
+)
+
 func nbNode(id model.NodeID, typ model.NodeType, immune bool, sal float64) model.Node {
 	return model.Node{
 		ID:         id,
@@ -50,13 +65,13 @@ func fixtureGraph(t *testing.T) *model.Graph {
 	t.Helper()
 	g := model.NewGraph()
 	nodes := []model.Node{
-		nbNode("cert", "bma.lineage.life-certificate", true, 1.0),
-		nbNode("seed1", "bma.seed", true, 1.0),
-		nbNode("seed2", "bma.seed", true, 1.0),
-		nbNode("obs1", "bma.observation", false, 0.3),
-		nbNode("obs2", "bma.observation", false, 0.2),
-		nbNode("obs3", "bma.observation", false, 0.1),
-		nbNode("orphan", "bma.observation", false, 0.0),
+		nbNode(certID, certType, true, 1.0),
+		nbNode(seed1ID, seedType, true, 1.0),
+		nbNode(seed2ID, seedType, true, 1.0),
+		nbNode(obs1ID, obsType, false, 0.3),
+		nbNode(obs2ID, obsType, false, 0.2),
+		nbNode(obs3ID, obsType, false, 0.1),
+		nbNode(orphanID, obsType, false, 0.0),
 	}
 	for _, n := range nodes {
 		if err := g.AddNode(n); err != nil {
@@ -64,11 +79,11 @@ func fixtureGraph(t *testing.T) *model.Graph {
 		}
 	}
 	edges := []model.Hyperedge{
-		nbEdge("e-cs1", "cert", "seed1"),
-		nbEdge("e-cs2", "cert", "seed2"),
-		nbEdge("e-s1o1", "seed1", "obs1"),
-		nbEdge("e-s2o2", "seed2", "obs2"),
-		nbEdge("e-o1o3", "obs1", "obs3"),
+		nbEdge("e-cs1", certID, seed1ID),
+		nbEdge("e-cs2", certID, seed2ID),
+		nbEdge("e-s1o1", seed1ID, obs1ID),
+		nbEdge("e-s2o2", seed2ID, obs2ID),
+		nbEdge("e-o1o3", obs1ID, obs3ID),
 	}
 	for _, e := range edges {
 		if err := g.AddHyperedge(e); err != nil {
@@ -80,13 +95,13 @@ func fixtureGraph(t *testing.T) *model.Graph {
 
 func TestNeighborhood_Depth2CertAnchored(t *testing.T) {
 	q := New(fixtureGraph(t))
-	sg, err := q.Neighborhood("cert", 2, 100)
+	sg, err := q.Neighborhood(certID, 2, 100)
 	if err != nil {
 		t.Fatalf("Neighborhood: %v", err)
 	}
 	// Depth 2 from cert: cert(0), seed1+seed2(1), obs1+obs2(2).
 	// obs3 is 3 hops; orphan unreachable.
-	wantIDs := []model.NodeID{"cert", "seed1", "seed2", "obs1", "obs2"}
+	wantIDs := []model.NodeID{certID, seed1ID, seed2ID, obs1ID, obs2ID}
 	gotIDs := make([]model.NodeID, len(sg.Nodes))
 	for i, n := range sg.Nodes {
 		gotIDs[i] = n.ID
@@ -98,7 +113,7 @@ func TestNeighborhood_Depth2CertAnchored(t *testing.T) {
 		t.Error("Truncated should be false — budget not hit")
 	}
 	// Hops annotation.
-	wantHops := map[model.NodeID]int{"cert": 0, "seed1": 1, "seed2": 1, "obs1": 2, "obs2": 2}
+	wantHops := map[model.NodeID]int{certID: 0, seed1ID: 1, seed2ID: 1, obs1ID: 2, obs2ID: 2}
 	for _, n := range sg.Nodes {
 		if n.Hops != wantHops[n.ID] {
 			t.Errorf("node %s hops = %d, want %d", n.ID, n.Hops, wantHops[n.ID])
@@ -118,11 +133,11 @@ func TestNeighborhood_Depth2CertAnchored(t *testing.T) {
 
 func TestNeighborhood_Deterministic(t *testing.T) {
 	q := New(fixtureGraph(t))
-	a, err := q.Neighborhood("cert", 2, 100)
+	a, err := q.Neighborhood(certID, 2, 100)
 	if err != nil {
 		t.Fatalf("first call: %v", err)
 	}
-	b, err := q.Neighborhood("cert", 2, 100)
+	b, err := q.Neighborhood(certID, 2, 100)
 	if err != nil {
 		t.Fatalf("second call: %v", err)
 	}
@@ -181,7 +196,7 @@ func TestNeighborhood_ExactFitBeyondRingSetsTruncated(t *testing.T) {
 	q := New(fixtureGraph(t))
 	// Budget 3 = cert + both seeds (ring 1 fits exactly); ring 2
 	// (obs1, obs2) exists beyond → Truncated.
-	sg, err := q.Neighborhood("cert", 2, 3)
+	sg, err := q.Neighborhood(certID, 2, 3)
 	if err != nil {
 		t.Fatalf("Neighborhood: %v", err)
 	}
@@ -203,21 +218,21 @@ func TestNeighborhood_AnchorNotFound(t *testing.T) {
 
 func TestNeighborhood_RejectsBadParams(t *testing.T) {
 	q := New(fixtureGraph(t))
-	if _, err := q.Neighborhood("cert", 0, 100); err == nil {
+	if _, err := q.Neighborhood(certID, 0, 100); err == nil {
 		t.Error("depth 0 must be rejected")
 	}
-	if _, err := q.Neighborhood("cert", 2, 0); err == nil {
+	if _, err := q.Neighborhood(certID, 2, 0); err == nil {
 		t.Error("maxNodes 0 must be rejected")
 	}
 }
 
 func TestNeighborhood_OrphanAnchor(t *testing.T) {
 	q := New(fixtureGraph(t))
-	sg, err := q.Neighborhood("orphan", 2, 100)
+	sg, err := q.Neighborhood(orphanID, 2, 100)
 	if err != nil {
 		t.Fatalf("Neighborhood: %v", err)
 	}
-	if len(sg.Nodes) != 1 || sg.Nodes[0].ID != "orphan" {
+	if len(sg.Nodes) != 1 || sg.Nodes[0].ID != orphanID {
 		t.Errorf("orphan shard = %v, want [orphan] only", sg.Nodes)
 	}
 	if len(sg.Edges) != 0 {
@@ -228,12 +243,15 @@ func TestNeighborhood_OrphanAnchor(t *testing.T) {
 	}
 }
 
-func TestNeighborhood_OrientationCarriedInWire(t *testing.T) {
-	// Seam check vs bma-systema PR #244: the boot-time mirror's
-	// provenance edges are ORIENTED (cert→seed "read-at-founding":
-	// IsSymmetric=false, Heads=[0], Tails=[1]). The shard must carry
-	// the arrows — a navigational map without direction loses the
-	// provenance semantics the mirror exists to record.
+func TestNeighborhood_WriteShapeEqualsReadShape(t *testing.T) {
+	// Condition-1 round-trip (qbp-architecture §I4, PR #85): the
+	// architectural requirement is read-shape ≡ write-shape — what
+	// the BMA boot-time mirror WRITES (a model.Hyperedge provenance
+	// edge) is exactly what Neighborhood PROJECTS back (a
+	// SubgraphEdge). This asserts the round-trip mechanically rather
+	// than by assumption, using the mirror's literal oriented
+	// provenance shape (cert→seed "read-at-founding":
+	// IsSymmetric=false, Heads=[0], Tails=[1]) from bma-systema #244.
 	g := model.NewGraph()
 	must := func(err error) {
 		t.Helper()
@@ -241,32 +259,44 @@ func TestNeighborhood_OrientationCarriedInWire(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	must(g.AddNode(nbNode("cert", "bma.lineage.life-certificate", true, 1.0)))
-	must(g.AddNode(nbNode("seed1", "bma.seed", true, 1.0)))
-	prov := model.Hyperedge{
+	must(g.AddNode(nbNode(certID, certType, true, 1.0)))
+	must(g.AddNode(nbNode(seed1ID, seedType, true, 1.0)))
+
+	// WRITE side: the exact hyperedge the boot-time mirror emits.
+	written := model.Hyperedge{
 		ID:          "prov-read-at-founding-seed1",
-		Nodes:       []model.NodeID{"cert", "seed1"},
+		Nodes:       []model.NodeID{certID, seed1ID},
 		Weight:      model.NewComplexWeight(1, 0),
 		IsSymmetric: false,
 		Created:     time.Unix(0, 0),
 		Heads:       []int{0}, // source: cert
 		Tails:       []int{1}, // sink: seed
 	}
-	must(g.AddHyperedge(prov))
+	must(g.AddHyperedge(written))
 
-	sg, err := New(g).Neighborhood("cert", 1, 10)
+	// READ side: what Neighborhood projects back.
+	sg, err := New(g).Neighborhood(certID, 1, 10)
 	if err != nil {
 		t.Fatalf("Neighborhood: %v", err)
 	}
 	if len(sg.Edges) != 1 {
 		t.Fatalf("len(edges) = %d, want 1", len(sg.Edges))
 	}
-	e := sg.Edges[0]
-	if e.IsSymmetric {
-		t.Error("oriented edge marked symmetric in shard")
+	got := sg.Edges[0]
+
+	// Round-trip equality: every field the SubgraphEdge carries must
+	// equal the written hyperedge's value. Drop a field from the
+	// projection (as the pre-c5b2e8e shape dropped orientation) and
+	// this fails.
+	want := SubgraphEdge{
+		ID:          written.ID,
+		Nodes:       written.Nodes,
+		IsSymmetric: written.IsSymmetric,
+		Heads:       written.Heads,
+		Tails:       written.Tails,
 	}
-	if !reflect.DeepEqual(e.Heads, []int{0}) || !reflect.DeepEqual(e.Tails, []int{1}) {
-		t.Errorf("orientation dropped: Heads=%v Tails=%v, want [0]/[1]", e.Heads, e.Tails)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("read-shape != write-shape:\n got  %+v\n want %+v", got, want)
 	}
 }
 
