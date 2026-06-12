@@ -1,3 +1,11 @@
+# Wyrd architecture — overview
+
+> **Structural overview only.** The consolidated implementation contract is
+> `doc/Wyrd-Spec-v1.0.md`. The formal-theory companion is
+> `doc/Wyrd-Theory-v1.0.md`. This file is retained as a quick structural
+> entry point (two-halves diagram, four-corner picture, phase table).
+> For authoritative API, type, and soundness details, go to the Spec.
+
 # Wyrd architecture
 
 ## Two halves
