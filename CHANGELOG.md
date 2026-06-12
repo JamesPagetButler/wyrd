@@ -6,6 +6,22 @@ All notable changes to Wyrd. Format: [Keep a Changelog](https://keepachangelog.c
 
 ### Added
 
+- `doc/Wyrd-Theory-v1.0.md` — prose companion to the Lean corpus; maps all 25
+  Lean files to their Phase, purpose, and key theorems; stable section anchors for
+  cross-project consumers (closes #17).
+- `doc/Wyrd-Spec-v1.0.md` — consolidated implementation contract; absorbs
+  `doc/architecture.md` (overview retained), `doc/design/capability-enforcement.md`
+  v0.2 and `doc/design/bridge-batch.md` v0.1 as referenced design surfaces; §8
+  soundness-anchor table indexes every load-bearing Go API to its Lean file (closes #17).
+
+### Changed
+
+- `doc/architecture.md` re-targeted as a 1-page structural overview; canonical
+  authority for types, APIs, and soundness details is now `doc/Wyrd-Spec-v1.0.md`
+  (closes #17).
+
+### Added
+
 - Repository scaffolding: Go module, `model/`, `compute/`, `store/`,
   `internal/validate/`, `schema/`, `cmd/`, `testdata/`, `tools/`.
 - Lean 4 corpus moved into `lean/`. 16 files, 4 phases, 2048 lake jobs,
