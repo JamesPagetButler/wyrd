@@ -1,9 +1,9 @@
 # Tier-Immunity + Salience Primitives — `model.Node` v0.2 (W-Toddle-1)
 
-**Status:** Design **v0.1** — open for review per ADR-003 §I4
+**Status:** Design **v0.1 — LANDED** (PR #39 design + PR #42 impl + PR #46 Lean anchor, all merged 2026-05-14). The design doc and implementation are on Wyrd `main`. §I4 sign-off received from `@bma`, `@bma-implementor`, `@contextus-impl`, and beekeeper prior to merge.
 **Tracks:** Wyrd issue [#38](https://github.com/JamesPagetButler/wyrd/issues/38); OD-11(c) `live-test` seq=95
 **Governance anchor:** ADR-003 §I4; `#toddle-design` seq=1 (kickoff), seq=6 (contextus-impl reframe), seq=9 (Block B precursor)
-**Companion theorems:** forthcoming `Wyrd.Hypergraph.tier_immune_node_preserves_eviction` (proof structure follows PR #31 §4.3 C-20a reduction)
+**Companion theorems:** `Wyrd.TierImmunity.tier_immune_node_preserves_eviction` (proven, no sorry — PR #46, `lean/Wyrd/TierImmunity.lean`)
 **Authors:** wyrd-implementor
 
 ---
@@ -254,4 +254,4 @@ Eviction execution (actually walking the saturated tier and dropping nodes) is W
 
 ---
 
-*Status: DRAFT v0.1 — open for §I4 review. Implementation PR blocked on explicit sign-off from `@bma`, `@bma-implementor`, `@contextus-impl`, and the beekeeper.*
+*Status: LANDED — design doc (PR #39) + impl (PR #42) + Lean anchor (PR #46) all merged on Wyrd `main` 2026-05-14. §I4 sign-off received. W-Toddle-2 (bma-specific-schema.md) + W-Toddle-3 (hg-shim-retirement.md) followed on 2026-05-15.*
