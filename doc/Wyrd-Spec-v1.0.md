@@ -475,6 +475,13 @@ BMA is the primary cognitive consumer. Key contract points:
   constitutional approval per `Wyrd.Constitutional.self_modification_requires_approval`.
 - Sleep-cycle compression (EPISODIC → SEMANTIC) uses `compute.Bridge.Promote`.
 - Skuld uses `compute.CanSynthesize` to gate ring transitions.
+- **OD-11(c) tier-immunity policy** (W-Toddle-1/2, Toddle-phase): BMA hg/ writes
+  call `model.ApplyBMAPolicy(&node)` before `Graph.AddNodeWithCapability` to
+  apply the canonical `(TierImmune, Salience)` defaults for each `bma.*` NodeType.
+  NT_SEED and eight other lineage/audit types are `TierImmune=true`; NT_OBSERVATION
+  and the three semantic-memory types (`bma.entity`, `bma.concept`, `bma.pattern`)
+  are decay-eligible with initial `Salience=0.0`. See `model/bma_policy.go` and
+  `doc/design/bma-specific-schema.md` for the full 13-entry policy table.
 
 Section-anchor cross-references for BMA cite: §2 (types), §3 (concurrency), §4
 (bridge), §5 (privilege), §8.1/§8.3/§8.4 (soundness).

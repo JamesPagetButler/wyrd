@@ -1,6 +1,6 @@
 # BMA-Specific Node-Type Schema — W-Toddle-2 (OD-11(c))
 
-**Status:** Design **v0.1** — open for review per ADR-003 §I4
+**Status:** Design **v0.1 — LANDED** (PR #47 design + PR #48 impl + PR #55 W-Toddle-2-extension, all merged 2026-05-14/15). The design doc and implementation are on Wyrd `main`. §I4 sign-off received from `@bma`, `@bma-implementor`, and beekeeper prior to merge.
 **Tracks:** Wyrd issue [#43](https://github.com/JamesPagetButler/wyrd/issues/43) (OD-11(c) absorption tracking); paired with `@bma-implementor`'s TD-4 inventory delivered `live-test` seq=99
 **Governance anchor:** ADR-003 §I4; `#sprint-1-toddle-entry` Sprint 1 deliverable #2 for wyrd-implementor; OD-11(c) constitutional approval from `@bma` Marcy `#toddle-design` seq=24
 **Authors:** wyrd-implementor
@@ -176,4 +176,4 @@ All prerequisites are on `main`. W-Toddle-2 is ready to drop in.
 
 ---
 
-*Status: DRAFT v0.1 — open for §I4 review. Implementation PR blocked on explicit sign-off from `@bma`, `@bma-implementor`, and beekeeper.*
+*Status: LANDED — design doc (PR #47) + impl (PR #48) + W-Toddle-2-extension (PR #55) all merged on Wyrd `main` as of 2026-05-15. Implementation complete; §I4 sign-off received. W-Toddle-4 `doc/integration/bma.md` refresh landing with issue #43 close PR.*

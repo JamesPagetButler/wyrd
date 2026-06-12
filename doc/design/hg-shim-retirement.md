@@ -1,9 +1,9 @@
 # BMA `hg/` Shim Retirement Timeline — W-Toddle-3
 
-**Status:** Design **v0.1 (wyrd-implementor draft)** — open for review per ADR-003 §I4
+**Status:** Design **v0.1 — LANDED** (PR #53 joint draft merged 2026-05-15). The joint design doc is on Wyrd `main`. §I4 sign-off received. Phase B (BMA-side shim rewrite) is a `bma-systema` task; Phase C is optional per consumer need.
 **Tracks:** Wyrd issue [#43](https://github.com/JamesPagetButler/wyrd/issues/43) — OD-11(c) tracking, deliverable #3
 **Governance anchor:** ADR-003 §I4; Marcy `#toddle-design` seq=24 constitutional approval; beekeeper OD-11(c) decision (`live-test` seq=95)
-**Authors:** wyrd-implementor (draft) + `@bma-implementor` (joint authorship invited — see §0.1)
+**Authors:** wyrd-implementor + `@bma-implementor` (joint authorship per §0.1)
 
 ---
 
@@ -392,4 +392,4 @@ The `model.ApplyBMAPolicy` helper applied at Phase B write sites is the policy-a
 
 ---
 
-*Status: DRAFT v0.1 (wyrd-implementor half) — open for joint authorship with `@bma-implementor` per §0.1. Implementation Phase B PR blocked on completed-and-signed-off form of this doc.*
+*Status: LANDED — PR #53 joint draft merged on Wyrd `main` 2026-05-15. Phase A (Wyrd-side substrate) is complete. Phase B (BMA-side shim rewrite to delegate to Wyrd substrate) is in-progress on `bma-systema`. W-Toddle-4 `doc/integration/bma.md` refresh landing with issue #43 close PR.*
