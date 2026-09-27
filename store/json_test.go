@@ -1,6 +1,7 @@
 package store
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -59,6 +60,101 @@ func TestJSONFile_RoundTrip(t *testing.T) {
 	}
 	if e.Weight.Components[1] != 1 {
 		t.Errorf("e_abc weight imI = %v, want 1", e.Weight.Components[1])
+	}
+}
+
+// TestJSONFile_HyperedgeTypeRoundTrip asserts a tenant-set edge Type
+// survives the real Save -> Load path (wyrd#92).
+func TestJSONFile_HyperedgeTypeRoundTrip(t *testing.T) {
+	g := model.NewGraph()
+	for _, id := range []model.NodeID{"a", "b"} {
+		_ = g.AddNode(mkNode(id, model.TierQuaternion))
+	}
+	_ = g.AddHyperedge(model.Hyperedge{
+		ID:      "e_typed",
+		Nodes:   []model.NodeID{"a", "b"},
+		Weight:  model.NewQuaternionWeight(0, 1, 0, 0),
+		Type:    "cth.opcode.mul",
+		Created: time.Unix(0, 0),
+	})
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "graph.json")
+	store := JSONFile{Path: path}
+	if err := store.Save(g); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	g2, err := store.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	e, ok := g2.Hyperedge("e_typed")
+	if !ok {
+		t.Fatal("e_typed not loaded")
+	}
+	if e.Type != "cth.opcode.mul" {
+		t.Errorf("edge Type after round-trip = %q, want %q", e.Type, "cth.opcode.mul")
+	}
+}
+
+// TestJSONFile_HyperedgeTypeBackwardCompat asserts an untyped edge
+// (Type == "") behaves exactly as before: it round-trips unchanged and
+// omitempty keeps a spurious "type" field out of the serialised form
+// (wyrd#92).
+func TestJSONFile_HyperedgeTypeBackwardCompat(t *testing.T) {
+	g := model.NewGraph()
+	for _, id := range []model.NodeID{"a", "b"} {
+		_ = g.AddNode(mkNode(id, model.TierQuaternion))
+	}
+	// Constructed the old way — no Type field set.
+	_ = g.AddHyperedge(model.Hyperedge{
+		ID:      "e_untyped",
+		Nodes:   []model.NodeID{"a", "b"},
+		Weight:  model.NewQuaternionWeight(0, 0, 1, 0),
+		Created: time.Unix(0, 0),
+	})
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "graph.json")
+	store := JSONFile{Path: path}
+	if err := store.Save(g); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	// omitempty: an untyped edge must not emit a "type" key. Marshal the
+	// hyperedge value directly (same struct tags the store's Save uses) and
+	// inspect the hyperedge object specifically — this asserts the
+	// json:"type,omitempty" tag without a variable-path file read (gosec
+	// G304), and avoids a raw substring scan (nodes carry their own
+	// required "type" field, which would be a false positive).
+	edgeJSON, err := json.Marshal(model.Hyperedge{
+		ID:      "e_untyped",
+		Nodes:   []model.NodeID{"a", "b"},
+		Weight:  model.NewQuaternionWeight(0, 0, 1, 0),
+		Created: time.Unix(0, 0),
+	})
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(edgeJSON, &fields); err != nil {
+		t.Fatalf("Unmarshal hyperedge: %v", err)
+	}
+	if _, present := fields["type"]; present {
+		t.Errorf("untyped edge serialised a spurious \"type\" field:\n%s", edgeJSON)
+	}
+
+	g2, err := store.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	e, ok := g2.Hyperedge("e_untyped")
+	if !ok {
+		t.Fatal("e_untyped not loaded")
+	}
+	if e.Type != "" {
+		t.Errorf("untyped edge Type after round-trip = %q, want empty", e.Type)
 	}
 }
 

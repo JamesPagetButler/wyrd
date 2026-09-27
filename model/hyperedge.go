@@ -30,6 +30,18 @@ type Hyperedge struct {
 	IsSymmetric bool        `json:"is_symmetric"`
 	Created     time.Time   `json:"created"`
 
+	// Type is a free-form, tenant-settable classification for the edge,
+	// mirroring Node.Type but without the reserved-prefix semantics —
+	// Wyrd assigns no meaning to it. Consumers (CTH opcode kind, BMA
+	// relation kind, etc.) choose their own conventions.
+	//
+	// Empty ("") is the default and means exactly the pre-Type behaviour:
+	// existing edges are unaffected and, via omitempty, an untyped edge
+	// serialises without a spurious field (v0.1 wire-format compatibility,
+	// matching the additive-field convention already used by TierImmune,
+	// Salience, Heads and Tails on this struct).
+	Type string `json:"type,omitempty"`
+
 	// Heads and Tails are indices into Nodes encoding orientation. When
 	// IsSymmetric == false, Heads identifies the source-side nodes
 	// and Tails the sink-side nodes; their semantics are tenant-
