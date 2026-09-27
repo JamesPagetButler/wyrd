@@ -122,25 +122,27 @@ func TestJSONFile_HyperedgeTypeBackwardCompat(t *testing.T) {
 		t.Fatalf("Save: %v", err)
 	}
 
-	// omitempty: an untyped edge must not emit a "type" key. Inspect the
-	// serialised hyperedge object specifically (nodes carry their own
-	// required "type" field, so a raw substring scan would be a false
-	// positive).
-	raw, err := os.ReadFile(path)
+	// omitempty: an untyped edge must not emit a "type" key. Marshal the
+	// hyperedge value directly (same struct tags the store's Save uses) and
+	// inspect the hyperedge object specifically — this asserts the
+	// json:"type,omitempty" tag without a variable-path file read (gosec
+	// G304), and avoids a raw substring scan (nodes carry their own
+	// required "type" field, which would be a false positive).
+	edgeJSON, err := json.Marshal(model.Hyperedge{
+		ID:      "e_untyped",
+		Nodes:   []model.NodeID{"a", "b"},
+		Weight:  model.NewQuaternionWeight(0, 0, 1, 0),
+		Created: time.Unix(0, 0),
+	})
 	if err != nil {
-		t.Fatalf("ReadFile: %v", err)
+		t.Fatalf("Marshal: %v", err)
 	}
-	var envelope struct {
-		Hyperedges []map[string]json.RawMessage `json:"hyperedges"`
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(edgeJSON, &fields); err != nil {
+		t.Fatalf("Unmarshal hyperedge: %v", err)
 	}
-	if err := json.Unmarshal(raw, &envelope); err != nil {
-		t.Fatalf("Unmarshal envelope: %v", err)
-	}
-	if len(envelope.Hyperedges) != 1 {
-		t.Fatalf("got %d hyperedges, want 1", len(envelope.Hyperedges))
-	}
-	if _, present := envelope.Hyperedges[0]["type"]; present {
-		t.Errorf("untyped edge serialised a spurious \"type\" field:\n%s", raw)
+	if _, present := fields["type"]; present {
+		t.Errorf("untyped edge serialised a spurious \"type\" field:\n%s", edgeJSON)
 	}
 
 	g2, err := store.Load()
