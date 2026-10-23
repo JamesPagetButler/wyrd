@@ -95,7 +95,10 @@ structure IndepPairsH where
 
 /-- The natural embedding: a triple-coherent recording induces a
     consistent pairwise representation, with q_AC = q_AB · q_BC. -/
-def tripleToPairsH (tc : TripleCoherentH) : IndepPairsH :=
+-- `noncomputable`: quaternion `*` depends on `Real.instField` (noncomputable)
+-- from the Mathlib v4.30.0 release. Marker-only — body and statements below
+-- are unchanged; `rfl` simp lemmas still reduce definitionally (inter#70 §I4).
+noncomputable def tripleToPairsH (tc : TripleCoherentH) : IndepPairsH :=
   { qAB := tc.qAB
     qAC := tc.qAB * tc.qBC
     qBC := tc.qBC }
