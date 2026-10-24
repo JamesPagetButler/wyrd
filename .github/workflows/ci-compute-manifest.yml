@@ -48,6 +48,13 @@ on:
       - 'doc/promotion/**'
     types: [opened, synchronize, reopened, labeled, unlabeled]
 
+# Federation CI pattern (inter/github-best-practices.md §4.2.1, via inter#35):
+# supersede in-flight runs for the same ref so a rapid push sequence only
+# gates the latest commit. Matches ci-go.yml. (wyrd#95)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   pull-requests: read
