@@ -76,7 +76,8 @@ type SubgraphEdge struct {
 // not a per-ring one: a locally-benign truncation or exact-full break
 // can foreclose the only path to a deeper mandatory node, so it is
 // enforced once, after the budgeted pass, by a budget-free reachability
-// check. If any reachable TierImmune node is missing from the shard the
+// check that walks the full depth-bounded neighbourhood regardless of
+// maxNodes. If any reachable TierImmune node is missing from the shard the
 // call fails loud (see Errors) rather than return a silently-incomplete
 // shard. (Detect-and-fail-loud is the invariant floor; preserving a path
 // to an includable mandatory node by evicting optionals is a future
