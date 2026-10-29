@@ -192,6 +192,203 @@ func TestNeighborhood_BudgetEvictionPriority(t *testing.T) {
 	}
 }
 
+// wyrd#104 TierImmune-guarantee test IDs (hoisted to satisfy goconst;
+// distinct from the other fixtures' IDs so no literal repeats ≥3×).
+const (
+	tiAnchor model.NodeID = "ti-anchor"
+	tiImm1   model.NodeID = "ti-imm1"
+	tiImm2   model.NodeID = "ti-imm2"
+	tiImm3   model.NodeID = "ti-imm3"
+	tiHot    model.NodeID = "ti-hot"
+	tiC1     model.NodeID = "ti-c1"
+	tiC2     model.NodeID = "ti-c2"
+
+	// immuneErrToken is the substring every loud TierImmune-exclusion error
+	// must contain (hoisted to satisfy goconst across the assertions).
+	immuneErrToken = "TierImmune"
+)
+
+// wyrd#104: when the mandatory TierImmune set fits the budget, ALL of
+// them are retained and the remaining budget is filled by optional
+// (non-immune) nodes by Salience — TierImmune is never dropped.
+func TestNeighborhood_TierImmuneAllRetainedOptionalFills(t *testing.T) {
+	g := model.NewGraph()
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(g.AddNode(nbNode(tiAnchor, seedType, true, 1.0)))
+	// Depth-1 ring: 2 mandatory (immune) + 3 optional; budget after
+	// anchor = 3, so 1 optional slot remains after the 2 mandatory.
+	must(g.AddNode(nbNode(tiImm1, seedType, true, 1.0)))
+	must(g.AddNode(nbNode(tiImm2, seedType, true, 1.0)))
+	must(g.AddNode(nbNode(tiHot, obsType, false, 0.9)))
+	must(g.AddNode(nbNode(tiC1, obsType, false, 0.1)))
+	must(g.AddNode(nbNode(tiC2, obsType, false, 0.1)))
+	for _, id := range []model.NodeID{tiImm1, tiImm2, tiHot, tiC1, tiC2} {
+		must(g.AddHyperedge(nbEdge(model.HyperedgeID("tie-"+string(id)), tiAnchor, id)))
+	}
+
+	sg, err := New(g).Neighborhood(tiAnchor, 1, 4) // anchor + 3
+	if err != nil {
+		t.Fatalf("Neighborhood: %v", err)
+	}
+	got := map[model.NodeID]bool{}
+	for _, n := range sg.Nodes {
+		got[n.ID] = true
+	}
+	if !got[tiImm1] || !got[tiImm2] {
+		t.Fatalf("a TierImmune node was dropped: got=%v — wyrd#104 invariant broken", got)
+	}
+	if !got[tiHot] {
+		t.Error("highest-salience optional not retained in the remaining budget")
+	}
+	if len(sg.Nodes) != 4 {
+		t.Errorf("len(nodes) = %d, want 4 (anchor + 2 immune + 1 optional)", len(sg.Nodes))
+	}
+	if !sg.Truncated {
+		t.Error("Truncated must be true — optional nodes were cut")
+	}
+}
+
+// wyrd#104 (the KILL test): when the mandatory TierImmune set at a ring
+// alone exceeds the budget, Neighborhood fails LOUD rather than silently
+// dropping a defeater. The old "sort-then-ring[:budget]" returned a
+// Subgraph with an immune node silently cut — this test KILLS that.
+func TestNeighborhood_TierImmuneMandatoryOverflowErrorsLoud(t *testing.T) {
+	g := model.NewGraph()
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(g.AddNode(nbNode(tiAnchor, seedType, true, 1.0)))
+	// Depth-1 ring of 3 mandatory immune nodes; budget after anchor = 2 < 3.
+	for _, id := range []model.NodeID{tiImm1, tiImm2, tiImm3} {
+		must(g.AddNode(nbNode(id, seedType, true, 1.0)))
+		must(g.AddHyperedge(nbEdge(model.HyperedgeID("tie-"+string(id)), tiAnchor, id)))
+	}
+
+	sg, err := New(g).Neighborhood(tiAnchor, 1, 3) // budget after anchor = 2, but 3 mandatory
+	if err == nil {
+		t.Fatalf("expected a loud error (3 mandatory TierImmune > budget 2), got none; sg=%+v — old ring[:budget] would silently drop a defeater", sg)
+	}
+	if len(sg.Nodes) != 0 {
+		t.Errorf("Subgraph must be zero on error, got %d nodes (no partial shard presented as complete)", len(sg.Nodes))
+	}
+	if !strings.Contains(err.Error(), immuneErrToken) || !strings.Contains(err.Error(), string(tiImm3)) {
+		t.Errorf("error should name the excluded TierImmune node (tiImm3, dropped by the budget), got: %v", err)
+	}
+}
+
+// wyrd#104 (second silent-drop path, found by qbp-architecture): when an
+// earlier hop fills the budget exactly, the budget==0 branch skipped the
+// next ring with Truncated=true — silently dropping a TierImmune defeater
+// at a deeper hop. Now it fails LOUD. Repro: depth 2, maxNodes 2 — anchor
+// + one optional at hop 1 fill the budget; the hop-2 TierImmune node must
+// not vanish with err=nil. KILLS the old budget==0 break.
+func TestNeighborhood_TierImmuneDeeperHopBudgetExhaustedErrorsLoud(t *testing.T) {
+	g := model.NewGraph()
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(g.AddNode(nbNode(tiAnchor, seedType, true, 1.0)))
+	must(g.AddNode(nbNode(tiHot, obsType, false, 0.9)))  // hop-1 optional
+	must(g.AddNode(nbNode(tiImm1, seedType, true, 1.0))) // hop-2 mandatory defeater
+	must(g.AddHyperedge(nbEdge("tie-a-hot", tiAnchor, tiHot)))
+	must(g.AddHyperedge(nbEdge("tie-hot-imm", tiHot, tiImm1)))
+
+	// anchor + the hop-1 optional fill maxNodes=2 exactly; the hop-2
+	// TierImmune node is beyond the budget (the budget==0 branch).
+	sg, err := New(g).Neighborhood(tiAnchor, 2, 2)
+	if err == nil {
+		t.Fatalf("expected a loud error (hop-2 TierImmune unreachable within budget), got none; sg=%+v — old budget==0 break silently dropped the defeater", sg)
+	}
+	if len(sg.Nodes) != 0 {
+		t.Errorf("Subgraph must be zero on error, got %d nodes", len(sg.Nodes))
+	}
+	if !strings.Contains(err.Error(), immuneErrToken) || !strings.Contains(err.Error(), string(tiImm1)) {
+		t.Errorf("error should name the excluded TierImmune node, got: %v", err)
+	}
+}
+
+// wyrd#104 §I4 KILL tests — qbp-architecture's probes P1/P2 (issuecomment-
+// 6487654183): a TierImmune node can be lost without any cut site touching
+// it, by sitting beyond an exhausted budget (P1) or behind a cut optional
+// (P2). The whole-traversal check must fail loud on both.
+
+// P1: a TierImmune node sits one hop beyond an exactly-exhausted budget.
+// a→o1→o2→imm, Neighborhood(a,3,2): anchor + o1 fill the budget, {o2} hits
+// budget==0 and breaks (benign — no immune in {o2}), so the hop-3 immune
+// node is never reached.
+func TestNeighborhood_P1_ImmuneBeyondExhaustedBudget(t *testing.T) {
+	g := model.NewGraph()
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(g.AddNode(nbNode(tiAnchor, seedType, true, 1.0)))
+	must(g.AddNode(nbNode(tiC1, obsType, false, 0.5)))   // o1
+	must(g.AddNode(nbNode(tiC2, obsType, false, 0.5)))   // o2
+	must(g.AddNode(nbNode(tiImm1, seedType, true, 1.0))) // imm (hop 3)
+	must(g.AddHyperedge(nbEdge("p1-a-o1", tiAnchor, tiC1)))
+	must(g.AddHyperedge(nbEdge("p1-o1-o2", tiC1, tiC2)))
+	must(g.AddHyperedge(nbEdge("p1-o2-imm", tiC2, tiImm1)))
+
+	sg, err := New(g).Neighborhood(tiAnchor, 3, 2)
+	if err == nil {
+		t.Fatalf("P1: hop-3 TierImmune silently dropped (err=nil); sg=%+v", sg)
+	}
+	if len(sg.Nodes) != 0 {
+		t.Errorf("Subgraph must be zero on error, got %d nodes", len(sg.Nodes))
+	}
+	if !strings.Contains(err.Error(), immuneErrToken) || !strings.Contains(err.Error(), string(tiImm1)) {
+		t.Errorf("error should name the excluded TierImmune node, got: %v", err)
+	}
+}
+
+// P2: optional cut at hop 1 drops the only path to a hop-2 immune node.
+// a→{hi1,hi2,lo}, lo→imm, Neighborhood(a,2,3): the hop-1 cut evicts lo (the
+// lowest-salience optional, no immune in that ring), so imm — reachable only
+// through lo — never enters a ring.
+func TestNeighborhood_P2_CutOptionalHidesDeeperImmune(t *testing.T) {
+	g := model.NewGraph()
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(g.AddNode(nbNode(tiAnchor, seedType, true, 1.0)))
+	must(g.AddNode(nbNode(tiHot, obsType, false, 0.9)))  // hi1
+	must(g.AddNode(nbNode(tiC2, obsType, false, 0.8)))   // hi2
+	must(g.AddNode(nbNode(tiC1, obsType, false, 0.1)))   // lo
+	must(g.AddNode(nbNode(tiImm1, seedType, true, 1.0))) // imm (behind lo)
+	must(g.AddHyperedge(nbEdge("p2-a-hi1", tiAnchor, tiHot)))
+	must(g.AddHyperedge(nbEdge("p2-a-hi2", tiAnchor, tiC2)))
+	must(g.AddHyperedge(nbEdge("p2-a-lo", tiAnchor, tiC1)))
+	must(g.AddHyperedge(nbEdge("p2-lo-imm", tiC1, tiImm1)))
+
+	sg, err := New(g).Neighborhood(tiAnchor, 2, 3)
+	if err == nil {
+		t.Fatalf("P2: hop-2 TierImmune silently dropped (path cut, err=nil); sg=%+v", sg)
+	}
+	if len(sg.Nodes) != 0 {
+		t.Errorf("Subgraph must be zero on error, got %d nodes", len(sg.Nodes))
+	}
+	if !strings.Contains(err.Error(), immuneErrToken) || !strings.Contains(err.Error(), string(tiImm1)) {
+		t.Errorf("error should name the excluded TierImmune node, got: %v", err)
+	}
+}
+
 func TestNeighborhood_ExactFitBeyondRingSetsTruncated(t *testing.T) {
 	q := New(fixtureGraph(t))
 	// Budget 3 = cert + both seeds (ring 1 fits exactly); ring 2
