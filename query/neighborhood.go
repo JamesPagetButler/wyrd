@@ -112,20 +112,12 @@ func (q *API) Neighborhood(anchor model.NodeID, depth, maxNodes int) (Subgraph, 
 			break
 		}
 		budget := maxNodes - len(out.Nodes)
-		if budget == 0 {
-			// Exactly-full shard with a nonempty unvisited ring beyond it.
-			// Dropping that ring is only safe if it holds no mandatory
-			// TierImmune node — otherwise the budget has silently excluded a
-			// defeater (the Nidavellir#38 "baby" invariant; wyrd#104). Fail
-			// loud and name them if any remain; else the shard is a prefix.
-			if m := mandatoryIDs(ring); len(m) > 0 {
-				return Subgraph{}, fmt.Errorf(
-					"query: neighborhood: node budget exhausted (maxNodes %d, remaining budget 0) with %d mandatory TierImmune nodes unvisited at hop %d from anchor %s %v — raise maxNodes or narrow depth",
-					maxNodes, len(m), h, anchor, m)
-			}
-			out.Truncated = true
-			break
-		}
+		// SINGLE cut site (wyrd#105 §I4 — cth + arch): for a nonempty ring,
+		// budget == 0 ⇒ len(ring) > budget, so this one branch also covers
+		// the exactly-full-shard case. Keeping it as the only truncation
+		// path means the TierImmune (mandatory) check can't drift between
+		// two sites — the whole-traversal invariant fires wherever the
+		// budget bites.
 		if len(ring) > budget {
 			// TierImmune nodes are MANDATORY — never silently dropped
 			// (the Nidavellir#38 "baby" invariant; wyrd#104). Partition
