@@ -202,6 +202,10 @@ const (
 	tiHot    model.NodeID = "ti-hot"
 	tiC1     model.NodeID = "ti-c1"
 	tiC2     model.NodeID = "ti-c2"
+
+	// immuneErrToken is the substring every loud TierImmune-exclusion error
+	// must contain (hoisted to satisfy goconst across the assertions).
+	immuneErrToken = "TierImmune"
 )
 
 // wyrd#104: when the mandatory TierImmune set fits the budget, ALL of
@@ -275,8 +279,8 @@ func TestNeighborhood_TierImmuneMandatoryOverflowErrorsLoud(t *testing.T) {
 	if len(sg.Nodes) != 0 {
 		t.Errorf("Subgraph must be zero on error, got %d nodes (no partial shard presented as complete)", len(sg.Nodes))
 	}
-	if !strings.Contains(err.Error(), "TierImmune") || !strings.Contains(err.Error(), string(tiImm1)) {
-		t.Errorf("error should name the overflow set (count + mandatory IDs), got: %v", err)
+	if !strings.Contains(err.Error(), immuneErrToken) || !strings.Contains(err.Error(), string(tiImm3)) {
+		t.Errorf("error should name the excluded TierImmune node (tiImm3, dropped by the budget), got: %v", err)
 	}
 }
 
@@ -309,8 +313,79 @@ func TestNeighborhood_TierImmuneDeeperHopBudgetExhaustedErrorsLoud(t *testing.T)
 	if len(sg.Nodes) != 0 {
 		t.Errorf("Subgraph must be zero on error, got %d nodes", len(sg.Nodes))
 	}
-	if !strings.Contains(err.Error(), "TierImmune") || !strings.Contains(err.Error(), string(tiImm1)) {
-		t.Errorf("error should name the unvisited mandatory set, got: %v", err)
+	if !strings.Contains(err.Error(), immuneErrToken) || !strings.Contains(err.Error(), string(tiImm1)) {
+		t.Errorf("error should name the excluded TierImmune node, got: %v", err)
+	}
+}
+
+// wyrd#104 §I4 KILL tests — qbp-architecture's probes P1/P2 (issuecomment-
+// 6487654183): a TierImmune node can be lost without any cut site touching
+// it, by sitting beyond an exhausted budget (P1) or behind a cut optional
+// (P2). The whole-traversal check must fail loud on both.
+
+// P1: a TierImmune node sits one hop beyond an exactly-exhausted budget.
+// a→o1→o2→imm, Neighborhood(a,3,2): anchor + o1 fill the budget, {o2} hits
+// budget==0 and breaks (benign — no immune in {o2}), so the hop-3 immune
+// node is never reached.
+func TestNeighborhood_P1_ImmuneBeyondExhaustedBudget(t *testing.T) {
+	g := model.NewGraph()
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(g.AddNode(nbNode(tiAnchor, seedType, true, 1.0)))
+	must(g.AddNode(nbNode(tiC1, obsType, false, 0.5)))   // o1
+	must(g.AddNode(nbNode(tiC2, obsType, false, 0.5)))   // o2
+	must(g.AddNode(nbNode(tiImm1, seedType, true, 1.0))) // imm (hop 3)
+	must(g.AddHyperedge(nbEdge("p1-a-o1", tiAnchor, tiC1)))
+	must(g.AddHyperedge(nbEdge("p1-o1-o2", tiC1, tiC2)))
+	must(g.AddHyperedge(nbEdge("p1-o2-imm", tiC2, tiImm1)))
+
+	sg, err := New(g).Neighborhood(tiAnchor, 3, 2)
+	if err == nil {
+		t.Fatalf("P1: hop-3 TierImmune silently dropped (err=nil); sg=%+v", sg)
+	}
+	if len(sg.Nodes) != 0 {
+		t.Errorf("Subgraph must be zero on error, got %d nodes", len(sg.Nodes))
+	}
+	if !strings.Contains(err.Error(), immuneErrToken) || !strings.Contains(err.Error(), string(tiImm1)) {
+		t.Errorf("error should name the excluded TierImmune node, got: %v", err)
+	}
+}
+
+// P2: optional cut at hop 1 drops the only path to a hop-2 immune node.
+// a→{hi1,hi2,lo}, lo→imm, Neighborhood(a,2,3): the hop-1 cut evicts lo (the
+// lowest-salience optional, no immune in that ring), so imm — reachable only
+// through lo — never enters a ring.
+func TestNeighborhood_P2_CutOptionalHidesDeeperImmune(t *testing.T) {
+	g := model.NewGraph()
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(g.AddNode(nbNode(tiAnchor, seedType, true, 1.0)))
+	must(g.AddNode(nbNode(tiHot, obsType, false, 0.9)))  // hi1
+	must(g.AddNode(nbNode(tiC2, obsType, false, 0.8)))   // hi2
+	must(g.AddNode(nbNode(tiC1, obsType, false, 0.1)))   // lo
+	must(g.AddNode(nbNode(tiImm1, seedType, true, 1.0))) // imm (behind lo)
+	must(g.AddHyperedge(nbEdge("p2-a-hi1", tiAnchor, tiHot)))
+	must(g.AddHyperedge(nbEdge("p2-a-hi2", tiAnchor, tiC2)))
+	must(g.AddHyperedge(nbEdge("p2-a-lo", tiAnchor, tiC1)))
+	must(g.AddHyperedge(nbEdge("p2-lo-imm", tiC1, tiImm1)))
+
+	sg, err := New(g).Neighborhood(tiAnchor, 2, 3)
+	if err == nil {
+		t.Fatalf("P2: hop-2 TierImmune silently dropped (path cut, err=nil); sg=%+v", sg)
+	}
+	if len(sg.Nodes) != 0 {
+		t.Errorf("Subgraph must be zero on error, got %d nodes", len(sg.Nodes))
+	}
+	if !strings.Contains(err.Error(), immuneErrToken) || !strings.Contains(err.Error(), string(tiImm1)) {
+		t.Errorf("error should name the excluded TierImmune node, got: %v", err)
 	}
 }
 

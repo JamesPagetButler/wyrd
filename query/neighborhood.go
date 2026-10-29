@@ -64,26 +64,34 @@ type SubgraphEdge struct {
 //
 // Traversal: breadth-first, ring by ring, up to depth hops. Within a
 // ring, nodes are ordered NodeID-lexicographically. When admitting a
-// full ring would exceed maxNodes, TierImmune nodes are MANDATORY and
-// always retained (seeds, lineage records, and defeasibility guards
-// never fall out of their own shard — the Nidavellir#38 "baby"
-// invariant, wyrd#104); the remaining budget is filled with the
-// optional (non-TierImmune) nodes by Salience descending, then NodeID
-// ascending as the deterministic tie-break. A cut (or an unvisited
-// nonempty ring beyond an exactly-full budget) sets Truncated. A
-// TierImmune node is never silently dropped: if the mandatory
-// TierImmune set at a ring alone exceeds maxNodes, the call fails loud
-// (see Errors) rather than drop it or overflow the budget.
+// full ring would exceed maxNodes it is cut by retention priority —
+// TierImmune first (best-effort), then Salience descending, then NodeID
+// ascending — and a cut (or an unvisited nonempty ring beyond an
+// exactly-full budget) sets Truncated.
+//
+// TierImmune guarantee (the Nidavellir#38 "baby" invariant, wyrd#104):
+// no TierImmune node reachable within depth — a seed, lineage record,
+// defeasibility override, or sole-alternative-path node — is ever
+// silently excluded from the shard. This is a WHOLE-TRAVERSAL property,
+// not a per-ring one: a locally-benign truncation or exact-full break
+// can foreclose the only path to a deeper mandatory node, so it is
+// enforced once, after the budgeted pass, by a budget-free reachability
+// check. If any reachable TierImmune node is missing from the shard the
+// call fails loud (see Errors) rather than return a silently-incomplete
+// shard. (Detect-and-fail-loud is the invariant floor; preserving a path
+// to an includable mandatory node by evicting optionals is a future
+// enhancement.)
 //
 // Neighbor semantics match [API.NeighborNodes]: combinatorial
 // membership, orientation ignored at v0.1, arity-1 self-edges do not
 // produce neighbors.
 //
 // Errors: wraps [model.ErrNodeNotFound] if anchor does not exist;
-// depth < 1 or maxNodes < 1 is rejected; and the mandatory TierImmune
-// set at a ring exceeding maxNodes is a loud error naming the overflow
-// set (callers MUST surface it, not swallow it). The returned Subgraph
-// is zero on any error — never a partial shard presented as complete.
+// depth < 1 or maxNodes < 1 is rejected; and a budget that excludes any
+// TierImmune node reachable within depth is a loud error naming the
+// excluded set (callers MUST surface it, not swallow it). The returned
+// Subgraph is zero on any error — never a partial shard presented as
+// complete.
 //
 // Concurrency: like the other API methods, takes RLocks across
 // multiple Graph reads — the result is always well-formed but is not
@@ -112,46 +120,33 @@ func (q *API) Neighborhood(anchor model.NodeID, depth, maxNodes int) (Subgraph, 
 			break
 		}
 		budget := maxNodes - len(out.Nodes)
-		// SINGLE cut site (wyrd#105 §I4 — cth + arch): for a nonempty ring,
-		// budget == 0 ⇒ len(ring) > budget, so this one branch also covers
-		// the exactly-full-shard case. Keeping it as the only truncation
-		// path means the TierImmune (mandatory) check can't drift between
-		// two sites — the whole-traversal invariant fires wherever the
-		// budget bites.
-		if len(ring) > budget {
-			// TierImmune nodes are MANDATORY — never silently dropped
-			// (the Nidavellir#38 "baby" invariant; wyrd#104). Partition
-			// the ring, keep every mandatory node, and fill the remaining
-			// budget with the highest-priority optional nodes.
-			var mandatory, optional []model.Node
-			for _, n := range ring {
-				if n.TierImmune {
-					mandatory = append(mandatory, n)
-				} else {
-					optional = append(optional, n)
-				}
-			}
-			if len(mandatory) > budget {
-				// The mandatory TierImmune set alone exceeds the budget:
-				// a complete shard is impossible and silently dropping a
-				// TierImmune node is forbidden, so fail loud and name the
-				// overflow set — never drop silently, never overflow silently.
-				return Subgraph{}, fmt.Errorf(
-					"query: neighborhood: node budget too small (maxNodes %d, remaining budget %d) for %d mandatory TierImmune nodes at hop %d from anchor %s %v — raise maxNodes or narrow depth",
-					maxNodes, budget, len(mandatory), h, anchor, mandatoryIDs(ring))
-			}
+		if budget == 0 {
+			// Exactly-full shard with a nonempty unvisited ring beyond it:
+			// the shard is a prefix. (Whether that prefix silently excludes
+			// a reachable TierImmune node is settled once, after the loop,
+			// by the whole-traversal check below — not here.)
 			out.Truncated = true
-			// Fill the remaining budget with optional nodes by retention
-			// priority: Salience descending, then NodeID ascending.
-			sort.Slice(optional, func(i, j int) bool {
-				a, b := optional[i], optional[j]
+			break
+		}
+		if len(ring) > budget {
+			out.Truncated = true
+			// Per-ring retention is BEST-EFFORT: TierImmune first (so a
+			// mandatory node is kept whenever it fits), then Salience
+			// descending, NodeID ascending as the deterministic tie-break.
+			// This is not the TierImmune guarantee — that is the whole-
+			// traversal check after the loop (wyrd#104; a cut here can still
+			// foreclose the only path to a deeper mandatory node, P1/P2).
+			sort.Slice(ring, func(i, j int) bool {
+				a, b := ring[i], ring[j]
+				if a.TierImmune != b.TierImmune {
+					return a.TierImmune
+				}
 				if a.Salience != b.Salience {
 					return a.Salience > b.Salience
 				}
 				return a.ID < b.ID
 			})
-			optional = optional[:budget-len(mandatory)]
-			ring = append(mandatory, optional...)
+			ring = ring[:budget]
 			// Restore the within-ring output ordering.
 			sort.Slice(ring, func(i, j int) bool { return ring[i].ID < ring[j].ID })
 		}
@@ -163,24 +158,57 @@ func (q *API) Neighborhood(anchor model.NodeID, depth, maxNodes int) (Subgraph, 
 		}
 	}
 
+	// Whole-traversal TierImmune guarantee (wyrd#104 §I4 — arch + cth + edda).
+	// Per-ring retention above is best-effort; the actual invariant is that no
+	// TierImmune node reachable within depth is SILENTLY excluded. A locally-
+	// benign truncation or exact-full break can foreclose the only path to a
+	// deeper mandatory node (probes P1/P2), so the guarantee is argued over the
+	// whole depth bound, not per step: a budget-free, ID-only BFS finds every
+	// reachable TierImmune node; any absent from the materialised shard is a
+	// loud error (zero Subgraph), never a silently-incomplete one. (Detect-and-
+	// fail-loud is the required floor; preserving a path to an includable
+	// mandatory node by evicting optionals along it is a future enhancement.)
+	if missing := q.unreachedTierImmune(anchor, depth, hops); len(missing) > 0 {
+		return Subgraph{}, fmt.Errorf(
+			"query: neighborhood: %d TierImmune node(s) reachable within depth %d are excluded by the maxNodes %d budget %v — raise maxNodes or narrow depth",
+			len(missing), depth, maxNodes, missing)
+	}
+
 	out.Edges = q.inducedEdges(hops)
 	return out, nil
 }
 
-// mandatoryIDs returns the sorted NodeIDs of the TierImmune (never-
-// droppable) nodes in ring, or nil if there are none. A TierImmune node
-// must never be silently dropped from a shard — defeasibility overrides,
-// sole-alternative-path nodes, seeds, and lineage records (the
-// Nidavellir#38 "baby" invariant; wyrd#104).
-func mandatoryIDs(ring []model.Node) []model.NodeID {
-	var ids []model.NodeID
-	for _, n := range ring {
-		if n.TierImmune {
-			ids = append(ids, n.ID)
+// unreachedTierImmune does a budget-free, ID-only BFS from anchor to depth
+// and returns the sorted NodeIDs of the TierImmune nodes reachable within
+// that bound that are ABSENT from present (the materialised shard's hops
+// map). A TierImmune node — a defeasibility override, sole-alternative-path
+// node, seed, or lineage record — must never be silently excluded from a
+// shard (the Nidavellir#38 "baby" invariant; wyrd#104). This single whole-
+// traversal check is the sole enforcement point: it catches a direct cut, an
+// exact-full break, and a path foreclosed by a pruned optional parent alike,
+// which no per-ring / per-cut-site check can establish.
+func (q *API) unreachedTierImmune(anchor model.NodeID, depth int, present map[model.NodeID]int) []model.NodeID {
+	visited := map[model.NodeID]int{anchor: 0}
+	frontier := []model.NodeID{anchor}
+	var missing []model.NodeID
+	for h := 1; h <= depth; h++ {
+		ring := q.nextRing(frontier, visited)
+		if len(ring) == 0 {
+			break
+		}
+		frontier = frontier[:0]
+		for _, n := range ring {
+			visited[n.ID] = h
+			frontier = append(frontier, n.ID)
+			if n.TierImmune {
+				if _, ok := present[n.ID]; !ok {
+					missing = append(missing, n.ID)
+				}
+			}
 		}
 	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-	return ids
+	sort.Slice(missing, func(i, j int) bool { return missing[i] < missing[j] })
+	return missing
 }
 
 // nextRing collects the not-yet-visited neighbor nodes of the
