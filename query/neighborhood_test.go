@@ -280,6 +280,40 @@ func TestNeighborhood_TierImmuneMandatoryOverflowErrorsLoud(t *testing.T) {
 	}
 }
 
+// wyrd#104 (second silent-drop path, found by qbp-architecture): when an
+// earlier hop fills the budget exactly, the budget==0 branch skipped the
+// next ring with Truncated=true — silently dropping a TierImmune defeater
+// at a deeper hop. Now it fails LOUD. Repro: depth 2, maxNodes 2 — anchor
+// + one optional at hop 1 fill the budget; the hop-2 TierImmune node must
+// not vanish with err=nil. KILLS the old budget==0 break.
+func TestNeighborhood_TierImmuneDeeperHopBudgetExhaustedErrorsLoud(t *testing.T) {
+	g := model.NewGraph()
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(g.AddNode(nbNode(tiAnchor, seedType, true, 1.0)))
+	must(g.AddNode(nbNode(tiHot, obsType, false, 0.9)))  // hop-1 optional
+	must(g.AddNode(nbNode(tiImm1, seedType, true, 1.0))) // hop-2 mandatory defeater
+	must(g.AddHyperedge(nbEdge("tie-a-hot", tiAnchor, tiHot)))
+	must(g.AddHyperedge(nbEdge("tie-hot-imm", tiHot, tiImm1)))
+
+	// anchor + the hop-1 optional fill maxNodes=2 exactly; the hop-2
+	// TierImmune node is beyond the budget (the budget==0 branch).
+	sg, err := New(g).Neighborhood(tiAnchor, 2, 2)
+	if err == nil {
+		t.Fatalf("expected a loud error (hop-2 TierImmune unreachable within budget), got none; sg=%+v — old budget==0 break silently dropped the defeater", sg)
+	}
+	if len(sg.Nodes) != 0 {
+		t.Errorf("Subgraph must be zero on error, got %d nodes", len(sg.Nodes))
+	}
+	if !strings.Contains(err.Error(), "TierImmune") || !strings.Contains(err.Error(), string(tiImm1)) {
+		t.Errorf("error should name the unvisited mandatory set, got: %v", err)
+	}
+}
+
 func TestNeighborhood_ExactFitBeyondRingSetsTruncated(t *testing.T) {
 	q := New(fixtureGraph(t))
 	// Budget 3 = cert + both seeds (ring 1 fits exactly); ring 2

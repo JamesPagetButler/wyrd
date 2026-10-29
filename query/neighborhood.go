@@ -113,8 +113,16 @@ func (q *API) Neighborhood(anchor model.NodeID, depth, maxNodes int) (Subgraph, 
 		}
 		budget := maxNodes - len(out.Nodes)
 		if budget == 0 {
-			// Exactly-full shard with a nonempty unvisited ring
-			// beyond it: the shard is a prefix.
+			// Exactly-full shard with a nonempty unvisited ring beyond it.
+			// Dropping that ring is only safe if it holds no mandatory
+			// TierImmune node — otherwise the budget has silently excluded a
+			// defeater (the Nidavellir#38 "baby" invariant; wyrd#104). Fail
+			// loud and name them if any remain; else the shard is a prefix.
+			if m := mandatoryIDs(ring); len(m) > 0 {
+				return Subgraph{}, fmt.Errorf(
+					"query: neighborhood: node budget exhausted (maxNodes %d, remaining budget 0) with %d mandatory TierImmune nodes unvisited at hop %d from anchor %s %v — raise maxNodes or narrow depth",
+					maxNodes, len(m), h, anchor, m)
+			}
 			out.Truncated = true
 			break
 		}
@@ -136,14 +144,9 @@ func (q *API) Neighborhood(anchor model.NodeID, depth, maxNodes int) (Subgraph, 
 				// a complete shard is impossible and silently dropping a
 				// TierImmune node is forbidden, so fail loud and name the
 				// overflow set — never drop silently, never overflow silently.
-				ids := make([]model.NodeID, len(mandatory))
-				for i, n := range mandatory {
-					ids[i] = n.ID
-				}
-				sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 				return Subgraph{}, fmt.Errorf(
-					"query: neighborhood: node budget %d too small for %d mandatory TierImmune nodes at hop %d from anchor %s %v — raise maxNodes or narrow depth",
-					maxNodes, len(mandatory), h, anchor, ids)
+					"query: neighborhood: node budget too small (maxNodes %d, remaining budget %d) for %d mandatory TierImmune nodes at hop %d from anchor %s %v — raise maxNodes or narrow depth",
+					maxNodes, budget, len(mandatory), h, anchor, mandatoryIDs(ring))
 			}
 			out.Truncated = true
 			// Fill the remaining budget with optional nodes by retention
@@ -170,6 +173,22 @@ func (q *API) Neighborhood(anchor model.NodeID, depth, maxNodes int) (Subgraph, 
 
 	out.Edges = q.inducedEdges(hops)
 	return out, nil
+}
+
+// mandatoryIDs returns the sorted NodeIDs of the TierImmune (never-
+// droppable) nodes in ring, or nil if there are none. A TierImmune node
+// must never be silently dropped from a shard — defeasibility overrides,
+// sole-alternative-path nodes, seeds, and lineage records (the
+// Nidavellir#38 "baby" invariant; wyrd#104).
+func mandatoryIDs(ring []model.Node) []model.NodeID {
+	var ids []model.NodeID
+	for _, n := range ring {
+		if n.TierImmune {
+			ids = append(ids, n.ID)
+		}
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids
 }
 
 // nextRing collects the not-yet-visited neighbor nodes of the
