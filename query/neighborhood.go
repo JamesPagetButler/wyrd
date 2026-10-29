@@ -64,19 +64,26 @@ type SubgraphEdge struct {
 //
 // Traversal: breadth-first, ring by ring, up to depth hops. Within a
 // ring, nodes are ordered NodeID-lexicographically. When admitting a
-// full ring would exceed maxNodes, the ring is cut by retention
-// priority — TierImmune nodes first, then Salience descending, then
-// NodeID ascending as the deterministic tie-break — so seeds and
-// lineage records never fall out of their own shard. A cut (or an
-// unvisited nonempty ring beyond an exactly-full budget) sets
-// Truncated.
+// full ring would exceed maxNodes, TierImmune nodes are MANDATORY and
+// always retained (seeds, lineage records, and defeasibility guards
+// never fall out of their own shard — the Nidavellir#38 "baby"
+// invariant, wyrd#104); the remaining budget is filled with the
+// optional (non-TierImmune) nodes by Salience descending, then NodeID
+// ascending as the deterministic tie-break. A cut (or an unvisited
+// nonempty ring beyond an exactly-full budget) sets Truncated. A
+// TierImmune node is never silently dropped: if the mandatory
+// TierImmune set at a ring alone exceeds maxNodes, the call fails loud
+// (see Errors) rather than drop it or overflow the budget.
 //
 // Neighbor semantics match [API.NeighborNodes]: combinatorial
 // membership, orientation ignored at v0.1, arity-1 self-edges do not
 // produce neighbors.
 //
 // Errors: wraps [model.ErrNodeNotFound] if anchor does not exist;
-// depth < 1 or maxNodes < 1 is rejected.
+// depth < 1 or maxNodes < 1 is rejected; and the mandatory TierImmune
+// set at a ring exceeding maxNodes is a loud error naming the overflow
+// set (callers MUST surface it, not swallow it). The returned Subgraph
+// is zero on any error — never a partial shard presented as complete.
 //
 // Concurrency: like the other API methods, takes RLocks across
 // multiple Graph reads — the result is always well-formed but is not
@@ -112,20 +119,44 @@ func (q *API) Neighborhood(anchor model.NodeID, depth, maxNodes int) (Subgraph, 
 			break
 		}
 		if len(ring) > budget {
-			out.Truncated = true
-			// Priority eviction: TierImmune first, Salience
-			// descending, NodeID ascending.
-			sort.Slice(ring, func(i, j int) bool {
-				a, b := ring[i], ring[j]
-				if a.TierImmune != b.TierImmune {
-					return a.TierImmune
+			// TierImmune nodes are MANDATORY — never silently dropped
+			// (the Nidavellir#38 "baby" invariant; wyrd#104). Partition
+			// the ring, keep every mandatory node, and fill the remaining
+			// budget with the highest-priority optional nodes.
+			var mandatory, optional []model.Node
+			for _, n := range ring {
+				if n.TierImmune {
+					mandatory = append(mandatory, n)
+				} else {
+					optional = append(optional, n)
 				}
+			}
+			if len(mandatory) > budget {
+				// The mandatory TierImmune set alone exceeds the budget:
+				// a complete shard is impossible and silently dropping a
+				// TierImmune node is forbidden, so fail loud and name the
+				// overflow set — never drop silently, never overflow silently.
+				ids := make([]model.NodeID, len(mandatory))
+				for i, n := range mandatory {
+					ids[i] = n.ID
+				}
+				sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+				return Subgraph{}, fmt.Errorf(
+					"query: neighborhood: node budget %d too small for %d mandatory TierImmune nodes at hop %d from anchor %s %v — raise maxNodes or narrow depth",
+					maxNodes, len(mandatory), h, anchor, ids)
+			}
+			out.Truncated = true
+			// Fill the remaining budget with optional nodes by retention
+			// priority: Salience descending, then NodeID ascending.
+			sort.Slice(optional, func(i, j int) bool {
+				a, b := optional[i], optional[j]
 				if a.Salience != b.Salience {
 					return a.Salience > b.Salience
 				}
 				return a.ID < b.ID
 			})
-			ring = ring[:budget]
+			optional = optional[:budget-len(mandatory)]
+			ring = append(mandatory, optional...)
 			// Restore the within-ring output ordering.
 			sort.Slice(ring, func(i, j int) bool { return ring[i].ID < ring[j].ID })
 		}

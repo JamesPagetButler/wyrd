@@ -192,6 +192,94 @@ func TestNeighborhood_BudgetEvictionPriority(t *testing.T) {
 	}
 }
 
+// wyrd#104 TierImmune-guarantee test IDs (hoisted to satisfy goconst;
+// distinct from the other fixtures' IDs so no literal repeats ≥3×).
+const (
+	tiAnchor model.NodeID = "ti-anchor"
+	tiImm1   model.NodeID = "ti-imm1"
+	tiImm2   model.NodeID = "ti-imm2"
+	tiImm3   model.NodeID = "ti-imm3"
+	tiHot    model.NodeID = "ti-hot"
+	tiC1     model.NodeID = "ti-c1"
+	tiC2     model.NodeID = "ti-c2"
+)
+
+// wyrd#104: when the mandatory TierImmune set fits the budget, ALL of
+// them are retained and the remaining budget is filled by optional
+// (non-immune) nodes by Salience — TierImmune is never dropped.
+func TestNeighborhood_TierImmuneAllRetainedOptionalFills(t *testing.T) {
+	g := model.NewGraph()
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(g.AddNode(nbNode(tiAnchor, seedType, true, 1.0)))
+	// Depth-1 ring: 2 mandatory (immune) + 3 optional; budget after
+	// anchor = 3, so 1 optional slot remains after the 2 mandatory.
+	must(g.AddNode(nbNode(tiImm1, seedType, true, 1.0)))
+	must(g.AddNode(nbNode(tiImm2, seedType, true, 1.0)))
+	must(g.AddNode(nbNode(tiHot, obsType, false, 0.9)))
+	must(g.AddNode(nbNode(tiC1, obsType, false, 0.1)))
+	must(g.AddNode(nbNode(tiC2, obsType, false, 0.1)))
+	for _, id := range []model.NodeID{tiImm1, tiImm2, tiHot, tiC1, tiC2} {
+		must(g.AddHyperedge(nbEdge(model.HyperedgeID("tie-"+string(id)), tiAnchor, id)))
+	}
+
+	sg, err := New(g).Neighborhood(tiAnchor, 1, 4) // anchor + 3
+	if err != nil {
+		t.Fatalf("Neighborhood: %v", err)
+	}
+	got := map[model.NodeID]bool{}
+	for _, n := range sg.Nodes {
+		got[n.ID] = true
+	}
+	if !got[tiImm1] || !got[tiImm2] {
+		t.Fatalf("a TierImmune node was dropped: got=%v — wyrd#104 invariant broken", got)
+	}
+	if !got[tiHot] {
+		t.Error("highest-salience optional not retained in the remaining budget")
+	}
+	if len(sg.Nodes) != 4 {
+		t.Errorf("len(nodes) = %d, want 4 (anchor + 2 immune + 1 optional)", len(sg.Nodes))
+	}
+	if !sg.Truncated {
+		t.Error("Truncated must be true — optional nodes were cut")
+	}
+}
+
+// wyrd#104 (the KILL test): when the mandatory TierImmune set at a ring
+// alone exceeds the budget, Neighborhood fails LOUD rather than silently
+// dropping a defeater. The old "sort-then-ring[:budget]" returned a
+// Subgraph with an immune node silently cut — this test KILLS that.
+func TestNeighborhood_TierImmuneMandatoryOverflowErrorsLoud(t *testing.T) {
+	g := model.NewGraph()
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(g.AddNode(nbNode(tiAnchor, seedType, true, 1.0)))
+	// Depth-1 ring of 3 mandatory immune nodes; budget after anchor = 2 < 3.
+	for _, id := range []model.NodeID{tiImm1, tiImm2, tiImm3} {
+		must(g.AddNode(nbNode(id, seedType, true, 1.0)))
+		must(g.AddHyperedge(nbEdge(model.HyperedgeID("tie-"+string(id)), tiAnchor, id)))
+	}
+
+	sg, err := New(g).Neighborhood(tiAnchor, 1, 3) // budget after anchor = 2, but 3 mandatory
+	if err == nil {
+		t.Fatalf("expected a loud error (3 mandatory TierImmune > budget 2), got none; sg=%+v — old ring[:budget] would silently drop a defeater", sg)
+	}
+	if len(sg.Nodes) != 0 {
+		t.Errorf("Subgraph must be zero on error, got %d nodes (no partial shard presented as complete)", len(sg.Nodes))
+	}
+	if !strings.Contains(err.Error(), "TierImmune") || !strings.Contains(err.Error(), string(tiImm1)) {
+		t.Errorf("error should name the overflow set (count + mandatory IDs), got: %v", err)
+	}
+}
+
 func TestNeighborhood_ExactFitBeyondRingSetsTruncated(t *testing.T) {
 	q := New(fixtureGraph(t))
 	// Budget 3 = cert + both seeds (ring 1 fits exactly); ring 2
