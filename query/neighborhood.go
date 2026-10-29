@@ -1,11 +1,18 @@
 package query
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 
 	"github.com/JamesPagetButler/wyrd/model"
 )
+
+// ErrTierImmuneExcluded is wrapped by [API.Neighborhood] when the node
+// budget would exclude a TierImmune node reachable within depth — the
+// Nidavellir#38 "baby" invariant (wyrd#104). Callers detect it with
+// errors.Is rather than matching the message text.
+var ErrTierImmuneExcluded = errors.New("TierImmune node excluded by node budget")
 
 // Subgraph is the wire-format result of [API.Neighborhood] — the
 // "holographic shard" of bma-systema issue #229. It is a MAP of the
@@ -171,8 +178,8 @@ func (q *API) Neighborhood(anchor model.NodeID, depth, maxNodes int) (Subgraph, 
 	// mandatory node by evicting optionals along it is a future enhancement.)
 	if missing := q.unreachedTierImmune(anchor, depth, hops); len(missing) > 0 {
 		return Subgraph{}, fmt.Errorf(
-			"query: neighborhood: %d TierImmune node(s) reachable within depth %d are excluded by the maxNodes %d budget %v — raise maxNodes or narrow depth",
-			len(missing), depth, maxNodes, missing)
+			"query: neighborhood: %w: %d node(s) reachable within depth %d (maxNodes %d) %v — raise maxNodes or narrow depth",
+			ErrTierImmuneExcluded, len(missing), depth, maxNodes, missing)
 	}
 
 	out.Edges = q.inducedEdges(hops)

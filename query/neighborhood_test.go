@@ -202,10 +202,6 @@ const (
 	tiHot    model.NodeID = "ti-hot"
 	tiC1     model.NodeID = "ti-c1"
 	tiC2     model.NodeID = "ti-c2"
-
-	// immuneErrToken is the substring every loud TierImmune-exclusion error
-	// must contain (hoisted to satisfy goconst across the assertions).
-	immuneErrToken = "TierImmune"
 )
 
 // wyrd#104: when the mandatory TierImmune set fits the budget, ALL of
@@ -279,7 +275,7 @@ func TestNeighborhood_TierImmuneMandatoryOverflowErrorsLoud(t *testing.T) {
 	if len(sg.Nodes) != 0 {
 		t.Errorf("Subgraph must be zero on error, got %d nodes (no partial shard presented as complete)", len(sg.Nodes))
 	}
-	if !strings.Contains(err.Error(), immuneErrToken) || !strings.Contains(err.Error(), string(tiImm3)) {
+	if !errors.Is(err, ErrTierImmuneExcluded) || !strings.Contains(err.Error(), string(tiImm3)) {
 		t.Errorf("error should name the excluded TierImmune node (tiImm3, dropped by the budget), got: %v", err)
 	}
 }
@@ -313,7 +309,7 @@ func TestNeighborhood_TierImmuneDeeperHopBudgetExhaustedErrorsLoud(t *testing.T)
 	if len(sg.Nodes) != 0 {
 		t.Errorf("Subgraph must be zero on error, got %d nodes", len(sg.Nodes))
 	}
-	if !strings.Contains(err.Error(), immuneErrToken) || !strings.Contains(err.Error(), string(tiImm1)) {
+	if !errors.Is(err, ErrTierImmuneExcluded) || !strings.Contains(err.Error(), string(tiImm1)) {
 		t.Errorf("error should name the excluded TierImmune node, got: %v", err)
 	}
 }
@@ -350,7 +346,7 @@ func TestNeighborhood_P1_ImmuneBeyondExhaustedBudget(t *testing.T) {
 	if len(sg.Nodes) != 0 {
 		t.Errorf("Subgraph must be zero on error, got %d nodes", len(sg.Nodes))
 	}
-	if !strings.Contains(err.Error(), immuneErrToken) || !strings.Contains(err.Error(), string(tiImm1)) {
+	if !errors.Is(err, ErrTierImmuneExcluded) || !strings.Contains(err.Error(), string(tiImm1)) {
 		t.Errorf("error should name the excluded TierImmune node, got: %v", err)
 	}
 }
@@ -384,8 +380,34 @@ func TestNeighborhood_P2_CutOptionalHidesDeeperImmune(t *testing.T) {
 	if len(sg.Nodes) != 0 {
 		t.Errorf("Subgraph must be zero on error, got %d nodes", len(sg.Nodes))
 	}
-	if !strings.Contains(err.Error(), immuneErrToken) || !strings.Contains(err.Error(), string(tiImm1)) {
+	if !errors.Is(err, ErrTierImmuneExcluded) || !strings.Contains(err.Error(), string(tiImm1)) {
 		t.Errorf("error should name the excluded TierImmune node, got: %v", err)
+	}
+}
+
+// wyrd#104 follow-up (arch): the budget-exclusion error wraps the exported
+// sentinel ErrTierImmuneExcluded, so callers (bma#358 --inject / boot
+// auto-inject) match with errors.Is, never the message text.
+func TestNeighborhood_ErrTierImmuneExcluded_IsMatchable(t *testing.T) {
+	g := model.NewGraph()
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(g.AddNode(nbNode(tiAnchor, seedType, true, 1.0)))
+	for _, id := range []model.NodeID{tiImm1, tiImm2, tiImm3} {
+		must(g.AddNode(nbNode(id, seedType, true, 1.0)))
+		must(g.AddHyperedge(nbEdge(model.HyperedgeID("se-"+string(id)), tiAnchor, id)))
+	}
+	_, err := New(g).Neighborhood(tiAnchor, 1, 3) // 3 mandatory immune > budget 2
+	if !errors.Is(err, ErrTierImmuneExcluded) {
+		t.Fatalf("budget-exclusion error must wrap ErrTierImmuneExcluded (errors.Is), got: %v", err)
+	}
+	// The sentinel is specific: a params error must NOT match it.
+	if _, perr := New(g).Neighborhood(tiAnchor, 0, 3); errors.Is(perr, ErrTierImmuneExcluded) {
+		t.Errorf("a params error must not match ErrTierImmuneExcluded, got: %v", perr)
 	}
 }
 
