@@ -1,7 +1,7 @@
 # Continuous-Capability Handover: Durability, MVCC Staging/CAS, and the Write-Fence
 
 **Status:** Theory addendum — DRAFT, open for §I4 review
-**Origin:** beekeeper GO, `live-test` seq=5539/5540 (2026-11-19), following ratification of inter#301 v1.7 + v1.7.1
+**Origin:** beekeeper GO, `live-test` seq=5539/5540 (2026-11-19), following ratification of inter#301 v1.7 + v1.7.1 (beekeeper go recorded on inter#301, issuecomment-7022163369)
 **Ratified record covered:** `JamesPagetButler/inter#301`, v1.6.3 through v1.7.1 (issuecomment-7017850231 and its round 11–16 dispositions; ratification issuecomment-7022163369)
 **Companion issue:** `JamesPagetButler/wyrd#108` (Skuld, the Run-phase hardware-boundary reference monitor — reading A, no new execution model)
 **Authors:** wyrd-implementor, with design-surface input adopted from `qbp-architecture` (fence-timeout scoping, `live-test` seq 5533–5536)
@@ -95,10 +95,16 @@ This grounds why durability and staging/CAS are independent, nontrivially-sized 
 **Shape this implies for Wyrd:**
 
 1. A fence is a lease — mint it with an owner, a deadline, and the scope it covers (the capability/lane-chain whose committed state it's fencing).
-2. While a live (unexpired) fence is held for a given scope: write calls targeting that scope's committed state are refused (not queued — the design calls for the replacement to "apply the tail," i.e. the replacement is the one performing bounded catch-up writes under the fence, not arbitrary callers); read calls proceed unaffected.
-3. The CAS-promote call itself only succeeds while the fence it names is both held and unexpired, and succeeds at most once per fence (a second promote attempt against an already-consumed or lapsed fence is refused).
-
-**Open question:** whether "writes pause" is scoped per-capability (only writes targeting that capability's committed state are blocked) or graph-wide for the duration of the fence. Per the division-of-labor principle and the smallness goal, per-capability scoping is the natural reading of v1.7 — a fence protecting one continuous capability's handover should not stall unrelated writes elsewhere in the graph — but the record doesn't say so explicitly, and it should be pinned before implementation.
+2. **While a live (unexpired) fence is held, the tail-apply writes go to the staging state, never to committed.** The fence holder (the replacement) may write *staging* only. The *committed* state is writable by nobody under a live fence — the holder included — except through the single CAS-promote call that ends the fence. "Applies the tail" (v1.7 r3) means the replacement's catch-up writes land in its own staging area, to be made visible only by the eventual promote; it is not a carve-out letting the holder write committed directly.
+   - **Test:** under a live fence, the holder's staging write succeeds and its committed write is refused.
+   - **Mutant:** the holder is exempted from the committed-state refusal. KILLED.
+3. **The fence scope is per-capability** — pinned by `qbp-architecture` ruling (`live-test` seq 5552), since the record doesn't say it explicitly. A fence covers exactly the committed-state scope of the capability (lane-chain) it names; writes outside that scope are unaffected. C2 and C5 describe one capability's handover, and a graph-wide fence would let one capability's refresh stall every other writer — the same starvation class R13 closed for admission.
+   - **Test:** a write to a different capability's scope succeeds during the fence.
+   - **Mutant:** the fence blocks graph-wide. KILLED.
+4. **A refusal under a live fence is a distinct, retryable error — `ErrFenced` — never the generic capability-refusal error.** The record says writes *pause*; this addendum's §4.2 says refused, not queued. For those to be consistent in practice, the caller has to be able to tell a fence refusal apart from an authorization refusal: the outgoing lane (R12-B2) retries the write once the fence lapses or the CAS-promote aborts, and it can only do that correctly if it can distinguish "try again, the fence will clear" from "you were never allowed to write this."
+   - **Test:** a fenced write returns `ErrFenced`; the same write succeeds once the fence lapses or the promotion aborts.
+   - **Mutant:** a fenced write returns the generic capability-refused error. KILLED.
+5. The CAS-promote call itself only succeeds while the fence it names is both held and unexpired, and succeeds at most once per fence (a second promote attempt against an already-consumed or lapsed fence is refused with `ErrFenced`).
 
 ---
 
