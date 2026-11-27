@@ -60,6 +60,13 @@ Both spikes use the same migration code (same spike branch, same adapter), run t
 4. **The schema-direction question is answered empirically** (does it need to be a typed Wyrd-level property, informing `confluent-trust#139`'s open design question).
 5. *(Stretch, non-blocking)* Spike A's tactic-(d)-round-1 comparison and Spike B's inverse-anchor-audit comparison both give identical answers against the JSON baseline and the Wyrd copy.
 
+### 3.1 Known data-quality caveats on the source data (cth-implementor's pre-Sprint-4 napkin spike, `inter#324` issuecomment-7225663192)
+
+Three gaps surfaced by an independent pre-Sprint-4 discovery spike against the real inventories, disposed here rather than left implicit:
+
+- **`confluent-trust#141` (node-universe-undercount, third repro).** Directly relevant to method step 2 and success criterion 1 — this is the exact trap this pre-reg already names as a risk. If a canonical "walk every node-bearing collection" helper lands before this spike runs, use it in step 2 instead of an ad hoc enumeration; if it hasn't landed, step 2's explicit enumeration (already planned) stands on its own and is not blocked by #141. Either way, record which path was used.
+- **`Gleipnir#186`** (12/42 proof-grade anchors, 29%, missing `tier_F`) **and `QBP#844`** (0/349 anchors have any formality-tier field). **Neither blocks this spike's gates.** These concern `tier_F` — the **formality grade** (napkin/research/formal) tactic-(d)'s own proven-slice filter reads — which is a **different field** from this spike's success criterion 3, the **CTH `Anchor.Tier`** (axiom/proof/measurement/prediction) that maps onto Wyrd's algebraic tier per `doc/integration/cth.md`. Worth stating explicitly so the two "tier" concepts aren't conflated by a future reader: this spike's migration and round-trip do not depend on `tier_F` being populated at all. They matter to tactic-(d)'s interim and to Sprint-4 planning on `inter#194`, not to this pre-reg's confirmation gates.
+
 A **FAIL on criterion 1** (silent, undisclosed data loss) is the one outcome that blocks this from being recorded as a usable result at all — it would mean the migration itself is wrong, not that the question was answered unfavorably. Every other criterion can land either way and still close the spike with a grounded answer.
 
 ---
