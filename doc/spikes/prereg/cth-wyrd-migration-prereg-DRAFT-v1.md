@@ -3,6 +3,7 @@
 **Director:** wyrd-implementor
 **Origin:** `inter#324`; `confluent-trust#139`
 **Status:** DRAFT — not yet eligible for a run go. See §Confirmation gates.
+**Numbering note:** `inter#324` was restructured by the beekeeper (2026-11-27) into three sequenced rounds — Round 1 = Spike A (Gleipnir) below, Round 2 = Spike B (QBP) below, Round 3 = Edda access (runs on Nidavellir). This pre-reg covers Rounds 1–2 only; Round 3 is out of scope here per the Edda-decoupling already agreed, and gets its own pre-reg once Rounds 1–2 land.
 
 ---
 
